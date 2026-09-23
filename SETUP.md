@@ -88,11 +88,18 @@ Environment overrides:
 | `HELMDEV_EDITOR` | `code -g {file}:{line}` | click-to-open command |
 | `HELMDEV_TAIL_DIR` | `<tmp>/helm-dev-logs-<user>` | drop dir for tailed logs |
 
-Not a VSCode user:
+Not a VS Code user — `{file}` and `{line}` are substituted, then the command runs
+as given:
 
 ```bash
-HELMDEV_EDITOR='idea --line {line} {file}' ./helm-dev
+HELMDEV_EDITOR='webstorm --line {line} {file}' ./helm-dev   # JetBrains WebStorm
+HELMDEV_EDITOR='idea --line {line} {file}' ./helm-dev       # IntelliJ / PhpStorm / PyCharm
+HELMDEV_EDITOR='subl {file}:{line}' ./helm-dev              # Sublime Text
 ```
+
+For JetBrains IDEs the launcher comes from **Toolbox → the IDE → Settings → Generate
+shell scripts**, or **Tools → Create Command-line Launcher** in the IDE itself. Test it
+with `webstorm --line 1 /etc/hostname` before relying on it.
 
 ## 6. If something looks wrong
 
