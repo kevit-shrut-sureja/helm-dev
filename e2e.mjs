@@ -20,6 +20,25 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 
 /**
+ * Waits until a condition is true, rather than guessing how long it takes. The
+ * tail poll runs every 400ms and a burst has to clear it in more than one pass,
+ * so a fixed sleep here is either wasted time or an occasional miss on a loaded
+ * machine — this run flaked once on exactly that before the wait was made to
+ * poll instead.
+ * @param test - returns true once the condition holds
+ * @param timeoutMs - how long to try before giving up
+ * @returns whether the condition was met
+ */
+async function waitFor(test, timeoutMs = 8000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await test()) return true;
+    if (Date.now() > deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
+/**
  * Finds a port nothing is listening on, so a running helm-dev is left alone.
  * @returns a free port number
  */
@@ -160,7 +179,7 @@ const lines = Array.from({ length: BURST }, (_, i) =>
   JSON.stringify({ level: 30, time: Date.now(), msg: `e2e synthetic ${i}`, context: 'E2E', reqId: `req-${i}` }),
 ).join('\n');
 await appendFile(`${TAIL}/platform.log`, `${lines}\n`);
-await new Promise((r) => setTimeout(r, 2500));
+await waitFor(() => received.slice(before).filter((e) => e.type === 'log' && e.msg?.startsWith('e2e synthetic')).length >= BURST);
 
 const logEvents = received.slice(before).filter((e) => e.type === 'log' && e.msg?.startsWith('e2e synthetic'));
 check('tailed lines reach the SSE stream', logEvents.length === BURST, `${logEvents.length}/${BURST} received`);
@@ -175,7 +194,7 @@ const only = state.workspaces[0].projects
   .find((name) => state.workspaces.filter((w) => w.projects.some((p) => p.name === name)).length === 1);
 const mark = received.length;
 await appendFile(`${TAIL}/${only}.log`, `${JSON.stringify({ level: 30, time: Date.now(), msg: 'e2e unique owner' })}\n`);
-await new Promise((r) => setTimeout(r, 2500));
+await waitFor(() => received.slice(mark).some((e) => e.msg === 'e2e unique owner'));
 const owned = received.slice(mark).find((e) => e.msg === 'e2e unique owner');
 check('a name unique to one workspace is attributed', owned?.repo === state.workspaces[0].name,
   `${only} → ${owned?.repo}`);
@@ -189,15 +208,22 @@ const fat = Array.from({ length: 3000 }, (_, i) =>
   JSON.stringify({ level: 30, time: Date.now(), msg: `e2e fat ${i}`, context: 'E2E', detail: 'x'.repeat(400) }),
 ).join('\n');
 await appendFile(`${TAIL}/platform.log`, `${fat}\n`);
-await new Promise((r) => setTimeout(r, 5000));
+// stats.bufferMB is refreshed on an 8s tick, not per line — it is what the header
+// shows, not a live read. The buffer itself is live on every request, so eviction
+// is watched through /api/logs, the same endpoint the oldest-line check below uses.
+await waitFor(async () => {
+  const probe = await (await fetch(`${BASE}/api/logs?limit=100000`)).json();
+  return probe.length > 0 && probe[0].seq > logEvents[0].seq;
+}, 15000);
+
+const kept = await (await fetch(`${BASE}/api/logs?limit=100000`)).json();
+check('oldest lines went first', kept.length > 0 && logEvents.length > 0 && kept[0].seq > logEvents[0].seq,
+  `oldest kept seq ${kept[0]?.seq}, first sent ${logEvents[0]?.seq}`);
+check('buffer evicted rather than grew', kept.length < 3400, `${kept.length} records held`);
 
 const after = await (await fetch(`${BASE}/api/state`)).json();
 check('buffer stays inside its budget', after.stats.bufferMB <= after.stats.bufferMaxMB,
   `${after.stats.bufferMB}MB of ${after.stats.bufferMaxMB}MB`);
-check('buffer evicted rather than grew', after.stats.buffered < 3400, `${after.stats.buffered} records held`);
-const kept = await (await fetch(`${BASE}/api/logs?limit=100000`)).json();
-check('oldest lines went first', kept.length > 0 && logEvents.length > 0 && kept[0].seq > logEvents[0].seq,
-  `oldest kept seq ${kept[0]?.seq}, first sent ${logEvents[0]?.seq}`);
 
 reader.cancel().catch(() => undefined);
 
