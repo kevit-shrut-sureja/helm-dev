@@ -33,6 +33,9 @@ package, that is a signal to reconsider the approach.
 ```
 helm-dev            entry script (node with tuned heap flags)
 server.mjs          HTTP + SSE, routes, workspace lifecycle
+check.mjs           static check: broken references between the files below
+smoke.mjs           boots the page's modules in Node against a running instance
+
 lib/workspace.mjs   one watched repository and everything derived from it
 lib/runner.mjs      spawns nx serve, parses log formats, boot/failure states
 lib/log-index.mjs   builds and queries the log-site index
@@ -42,8 +45,22 @@ lib/watcher.mjs     source watching for staleness
 lib/preflight.mjs   memory and port checks before a start
 lib/stats.mjs       per-service memory, git state
 lib/tailer.mjs      tails <service>.log drop files
-public/             single page, vanilla JS, no framework
+
+public/index.html   the page, and the only place the modules are listed
+public/app.js       boot: load state, paint, subscribe, hand over
+public/core.js      shared state, the element map, helpers
+public/services.js  the sidebar: what runs, and the controls that change it
+public/workspaces.js  adding, removing and reordering repositories
+public/filters.js   what reaches the log pane, and the chips that say so
+public/logs.js      the virtualised log pane
+public/detail.js    the pane that opens on a line
+public/panels.js    settings, help, and closing them on a click away
+public/layout.js    theme and the draggable dividers
+public/styles/      one stylesheet per area, loaded in the order index.html lists
 ```
+
+ES modules, loaded natively — no bundler, and `<script type="module">` already
+defers them, so the DOM is ready when any of them runs.
 
 ## Conventions
 
@@ -76,15 +93,63 @@ public/             single page, vanilla JS, no framework
   asked for. Angular's watcher costs gigabytes.
 - **Nx keeps a failed or finished task alive.** A job that completes is detected from
   Nx's own `Process exited with code N` line, not from the child exiting.
+- **The page's modules import each other in cycles** — `logs` ↔ `detail`,
+  `logs` ↔ `filters`. Every one of those references is inside a function that runs
+  after boot, which ES modules handle; splitting them further to break the cycle
+  would only move the coupling somewhere less obvious.
+- **The buffers evict in batches, not per line.** Dropping one record per arriving
+  line moves the whole array each time: 121ms per 1000 lines on a full 50MB buffer,
+  against 0.9ms when evicting down to a low-water mark. Both the server and the tab
+  do it the same way.
+- **The page writes layout once per frame, never per line.** `appendLog` only sets a
+  flag; the spacer, the counter and the follow position are written inside the
+  animation frame. The follow position is computed from the row count rather than
+  read back as `scrollHeight`, because reading layout straight after writing it
+  forces a synchronous reflow — which used to happen on every log line.
+- **Log frames are coalesced over 16ms; status frames are not.** A burst of hundreds
+  of lines becomes one write, but anything the UI reacts to goes out immediately and
+  takes the waiting log lines with it, so order is never disturbed.
+- **Stylesheet order is load-bearing.** `index.html` lists them in cascade order and
+  a few selectors are deliberately restated later. Moving a block between files can
+  change what wins without changing a single declaration.
 
 ## Testing changes
 
-There is no test suite. Verify against a real workspace:
+Two checks, then your eyes. Run both before committing:
+
+```bash
+node check.mjs      # static: nothing refers to something that is gone
+node smoke.mjs      # boots the page's modules against a running instance
+node e2e.mjs         # full run: starts its own helm-dev, exercises every route
+                      # and the real log pipeline, then runs smoke.mjs against it
+```
+
+`check.mjs` exists because every serious bug here has been the same one: an edit
+replaced a block and silently dropped something the rest still used. It has
+caught four missing API routes, a page of missing CSS and two deleted functions,
+each of which had been broken for days. It fails when the page calls an endpoint
+the server does not serve, emits a class no stylesheet defines, calls a function
+declared nowhere, imports something not exported, or leaves a module nothing
+imports (`layout.js` sat dead for a day this way — nothing was missing, so nothing
+caught it until this check learned to ask whether each module is reachable).
+
+`e2e.mjs` starts a throwaway helm-dev on a free port, with its own tail directory
+and a 1MB buffer so eviction is actually exercised, and tears it down with
+`SIGKILL` so it never gets recorded as the session to `--resume`. It restores
+whatever presets were saved before it ran. It is the one that catches a route
+that answers but answers wrong — `check.mjs` only knows a route exists.
+
+Then verify against a real workspace:
 
 1. start a service and watch it reach `running` — not `unconfirmed`
 2. click a log line and confirm it resolves to the right `file:line`
-3. stop it and confirm it does not reappear as "started outside helm-dev"
-4. check the footprint in the header has not grown
+3. trace an id from that line and confirm the buffer filters to it
+4. stop it and confirm it does not reappear as "started outside helm-dev"
+5. check the footprint in the header has not grown
+
+**The server does not reload.** Changing `server.mjs` or `lib/` means restarting
+`./helm-dev`; only `public/` is picked up by refreshing the page. The page says so
+itself when it gets a 404 from a route it knows about.
 
 Measure rather than assume. Most of the decisions above came from a number that
 contradicted an assumption.

@@ -66,6 +66,7 @@ are per-browser. Environment variables override the rest:
 | `HELMDEV_BUFFER_MB` | `50` | log buffer budget |
 | `HELMDEV_EDITOR` | `code -g {file}:{line}` | click-to-open command |
 | `HELMDEV_TAIL_DIR` | `<tmp>/helm-dev-logs-<user>` | drop dir for tailed logs |
+| `HELMDEV_DETECT_MS` | `8000` | how often to look for services started elsewhere |
 
 ### Opening files in your editor
 
@@ -103,5 +104,7 @@ echo "export HELMDEV_EDITOR='webstorm --line {line} {file}'" >> ~/.zshrc
 ## Further reading
 
 - [`SETUP.md`](SETUP.md) — first-run walkthrough and troubleshooting
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — how a service gets run, how its logs
+  reach the page, and where each piece of state lives
 - [`CLAUDE.md`](CLAUDE.md) — conventions, and the decisions that look wrong until you
   know the measurement behind them
