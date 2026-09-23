@@ -554,6 +554,97 @@ button.watch-start { font-size: 10px; }
 
 /* ---------- workspace sections ---------- */
 
+.repo-section + .repo-section { margin-top: 4px; }
+
+.repo-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 2px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+}
+.repo-section:first-child .repo-head { border-top: 0; }
+.repo-head:hover { color: var(--text); }
+.repo-head .repo-caret { font-size: 9px; flex: none; opacity: 0.7; }
+.repo-head .repo-name { color: var(--text); font-weight: 700; flex: none; }
+.repo-head .repo-live { margin-left: auto; color: var(--green); white-space: nowrap; flex: none; }
+
+/* The branch sits under the workspace name and is clipped rather than wrapped;
+   the full value is in the tooltip. */
+.repo-branch {
+  padding: 0 14px 6px 26px;
+  font-size: 11px;
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.more-row {
+  padding: 3px 14px 3px 26px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.more-row:hover { color: var(--accent); }
+
+.no-match { padding: 14px; color: var(--muted); font-size: 11px; }
+
+.service-filter {
+  width: calc(100% - 20px);
+  margin: 2px 10px 6px;
+  font-size: 12px;
+}
+
+.service.pinned .name { color: var(--text); }
+button.mini.pin { color: #3a3f4d; font-size: 9px; }
+button.mini.pin:hover { color: var(--accent); }
+button.mini.pin.on { color: var(--amber); background: transparent; border-color: transparent; }
+.service .actions { display: none; gap: 3px; flex: none; }
+.service:hover .actions, .service.stale .actions, .service.pinned .actions { display: flex; }
+
+/* ---------- first run ---------- */
+
+/* A class rule with `display` outranks the browser's [hidden] rule, so the
+   hidden state has to be restated here or the panel covers the app. */
+.first-run[hidden] { display: none; }
+
+.first-run {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.first-run-card {
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+.first-run-card h2 { margin: 0 0 8px; font-size: 16px; }
+.first-run-card p { color: var(--muted); line-height: 1.6; margin: 0 0 18px; }
+.first-run-card code { color: var(--accent); }
+.first-run-card label { display: block; margin-bottom: 14px; }
+.first-run-card label > span { display: block; margin-bottom: 5px; font-size: 12px; }
+.first-run-card label small { color: var(--muted); font-weight: 400; }
+.first-run-card input { width: 100%; }
+.first-run-actions { display: flex; align-items: center; gap: 10px; }
+.first-run-error { color: var(--red); font-size: 11px; line-height: 1.5; }
+
+/* ---------- workspace sections ---------- */
+
 .repo-section + .repo-section { margin-top: 6px; }
 .repo-head {
   display: flex;

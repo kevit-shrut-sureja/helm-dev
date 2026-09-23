@@ -24,6 +24,10 @@ const state = {
   bytes: 0,
   trace: null,
   expanded: new Set(),
+  collapsed: new Set(),
+  showAllIn: new Set(),
+  pinned: new Set(),
+  serviceFilter: '',
   levels: new Set(['error', 'warn', 'info', 'debug', 'raw']),
   search: '',
   follow: true,
@@ -167,7 +171,10 @@ const LIVE_ORDER = { failed: 0, running: 1, starting: 2, queued: 3, external: 4,
  * @returns its projects in display order
  */
 function orderedProjects(workspace) {
+  const pinnedRank = (name) => (state.pinned.has(key(workspace.name, name)) ? 0 : 1);
   return [...workspace.projects].sort((a, b) => {
+    const pinned = pinnedRank(a.name) - pinnedRank(b.name);
+    if (pinned !== 0) return pinned;
     const rank = LIVE_ORDER[serviceState(workspace.name, a.name)] - LIVE_ORDER[serviceState(workspace.name, b.name)];
     if (rank !== 0) return rank;
     const kinds = { app: 0, job: 1, frontend: 2, other: 3 };
@@ -242,7 +249,7 @@ function serviceRowHtml(workspace, project) {
   if (muted) notes.push('logs muted — click the muted badge to enable');
   notes.push(live ? 'click to show only this service' : 'click ▶ to start');
 
-  return `<div class="service ${stale ? 'stale' : ''} ${focused ? 'focused' : ''}"
+  return `<div class="service ${stale ? 'stale' : ''} ${focused ? 'focused' : ''} ${state.pinned.has(id) ? 'pinned' : ''}"
       data-repo="${escapeHtml(repo)}" data-name="${escapeHtml(project.name)}" title="${escapeHtml(notes.join('\n'))}">
     <span class="dot ${status}"></span>
     <span class="name">${escapeHtml(project.name)}</span>
@@ -255,6 +262,8 @@ function serviceRowHtml(workspace, project) {
     ${muted ? '<span class="badge muted-badge" data-act="unmute" title="logs are off for this service — click to turn them on">muted</span>' : ''}
     ${memory ? `<span class="mem">${memory}M</span>` : ''}
     <span class="actions">
+      <button class="mini pin ${state.pinned.has(id) ? 'on' : ''}" data-act="pin"
+        title="${state.pinned.has(id) ? 'unpin — stop keeping it at the top' : 'pin — keep it at the top of this workspace'}">&#9679;</button>
       ${live ? '<button class="mini" data-act="restart" title="stop and start again">&#10227;</button>' : ''}
       ${live ? '<button class="mini" data-act="stop" title="stop service">&times;</button>' : '<button class="mini" data-act="start" title="start service">&#9654;</button>'}
       ${!live && isFrontend
@@ -265,27 +274,75 @@ function serviceRowHtml(workspace, project) {
 }
 
 /**
+ * Decides which services a section shows. Only a couple of the ~70 projects in
+ * a workspace are ever running, so the rest are folded away until asked for.
+ * @param workspace - the workspace record
+ * @returns the projects to render, and how many were folded away
+ */
+function visibleProjects(workspace) {
+  const ordered = orderedProjects(workspace);
+  const filter = state.serviceFilter.trim().toLowerCase();
+
+  if (filter.length > 0) {
+    const matches = ordered.filter(
+      (project) =>
+        project.name.toLowerCase().includes(filter) || workspace.name.toLowerCase().includes(filter),
+    );
+    return { shown: matches, folded: 0 };
+  }
+
+  if (state.showAllIn.has(workspace.name)) return { shown: ordered, folded: 0 };
+
+  const shown = ordered.filter(
+    (project) =>
+      state.pinned.has(key(workspace.name, project.name)) ||
+      serviceState(workspace.name, project.name) !== 'stopped',
+  );
+  return { shown, folded: ordered.length - shown.length };
+}
+
+/**
  * Renders every workspace as its own section, so the same service name in two
  * repositories is never confused for one.
  */
 function renderServices() {
   renderStopAll();
+  const filtering = state.serviceFilter.trim().length > 0;
+
   const sections = state.workspaces.map((workspace) => {
+    const collapsed = state.collapsed.has(workspace.name) && !filtering;
     const liveHere = workspace.projects.filter((project) =>
       ['running', 'starting', 'queued', 'external', 'failed'].includes(serviceState(workspace.name, project.name)),
     ).length;
     const git = state.stats.git?.[workspace.name];
-    const rows = orderedProjects(workspace).map((project) => serviceRowHtml(workspace, project)).join('');
-    return `<div class="repo-section">
+    const { shown, folded } = visibleProjects(workspace);
+
+    if (filtering && shown.length === 0) return '';
+
+    const rows = collapsed ? '' : shown.map((project) => serviceRowHtml(workspace, project)).join('');
+    const more =
+      collapsed || folded === 0
+        ? ''
+        : `<div class="more-row" data-more="${escapeHtml(workspace.name)}">+${folded} more</div>`;
+    const less =
+      !collapsed && !filtering && state.showAllIn.has(workspace.name)
+        ? `<div class="more-row" data-more="${escapeHtml(workspace.name)}">show only what is running</div>`
+        : '';
+
+    return `<div class="repo-section ${collapsed ? 'collapsed' : ''}">
       <div class="repo-head" data-repo-head="${escapeHtml(workspace.name)}" title="${escapeHtml(workspace.root)}">
+        <span class="repo-caret">${collapsed ? '&#9656;' : '&#9662;'}</span>
         <span class="repo-name">${escapeHtml(workspace.name)}</span>
-        ${git ? `<span class="repo-branch" title="current branch">${escapeHtml(git.branch)}</span>` : ''}
         ${liveHere > 0 ? `<span class="repo-live">${liveHere} up</span>` : ''}
       </div>
+      ${git ? `<div class="repo-branch" title="${escapeHtml(git.branch)}">${escapeHtml(git.branch)}</div>` : ''}
       ${rows}
+      ${more}
+      ${less}
     </div>`;
   });
-  el.services.innerHTML = sections.join('');
+
+  el.services.innerHTML = sections.join('') || '<div class="no-match">nothing matches that filter</div>';
 }
 
 /**
@@ -807,6 +864,25 @@ async function showDetail(record) {
 /* ---------- wiring ---------- */
 
 el.services.addEventListener('click', async (event) => {
+  const head = event.target.closest('.repo-head');
+  if (head) {
+    const repo = head.dataset.repoHead;
+    if (state.collapsed.has(repo)) state.collapsed.delete(repo);
+    else state.collapsed.add(repo);
+    writePref('collapsed', [...state.collapsed]);
+    renderServices();
+    return;
+  }
+
+  const more = event.target.closest('.more-row');
+  if (more) {
+    const repo = more.dataset.more;
+    if (state.showAllIn.has(repo)) state.showAllIn.delete(repo);
+    else state.showAllIn.add(repo);
+    renderServices();
+    return;
+  }
+
   const node = event.target.closest('.service');
   if (!node) return;
   const repo = node.dataset.repo;
@@ -826,6 +902,13 @@ el.services.addEventListener('click', async (event) => {
     renderServices();
     renderFocus();
     renderLogs();
+    return;
+  }
+  if (action === 'pin') {
+    if (state.pinned.has(id)) state.pinned.delete(id);
+    else state.pinned.add(id);
+    writePref('pinned', [...state.pinned]);
+    renderServices();
     return;
   }
   if (action === 'unmute') {
@@ -1456,3 +1539,29 @@ document.getElementById('sidebarResizer').addEventListener('mousedown', (event) 
   window.addEventListener('mousemove', onMove);
   window.addEventListener('mouseup', onUp);
 });
+
+
+/* ---------- service filter, and the preferences the sidebar remembers ---------- */
+
+const serviceFilter = document.getElementById('serviceFilter');
+let filterTimer = null;
+
+serviceFilter.addEventListener('input', () => {
+  clearTimeout(filterTimer);
+  filterTimer = setTimeout(() => {
+    state.serviceFilter = serviceFilter.value;
+    renderServices();
+  }, 90);
+});
+
+serviceFilter.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  serviceFilter.value = '';
+  state.serviceFilter = '';
+  renderServices();
+  serviceFilter.blur();
+});
+
+for (const repo of readPref('collapsed', [])) state.collapsed.add(repo);
+for (const id of readPref('pinned', [])) state.pinned.add(id);
+renderServices();
