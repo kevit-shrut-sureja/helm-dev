@@ -1,4 +1,4 @@
-# devscope — setup
+# helm-dev — setup
 
 A local log console for this monorepo. It starts services, merges their logs into
 one filterable stream, and resolves any log line back to the source line that
@@ -14,7 +14,7 @@ Nothing is installed. No `npm install`, no build step, no dependencies.
 |---|---|
 | **Node** | 20 or newer (`node -v`) — the same one you build the repo with |
 | **OS** | Linux. On macOS it runs, but service detection, per-service memory and process-tree cleanup quietly do nothing. No Windows support. |
-| **Port** | 7788 free (change it with `DEVSCOPE_PORT`) |
+| **Port** | 7788 free (change it with `HELMDEV_PORT`) |
 | **Editor** | `code` on your PATH for click-to-open. Any other editor works — see step 5. |
 
 ## 2. Install
@@ -22,7 +22,7 @@ Nothing is installed. No `npm install`, no build step, no dependencies.
 Put the folder inside your checkout of the repo, at this exact path:
 
 ```
-<your-repo>/tmp/devscope
+<your-repo>/tmp/helm-dev
 ```
 
 It locates the repo by walking up for `nx.json`, so that path needs no configuring.
@@ -36,20 +36,20 @@ was built from, and rebuilds itself when either differs.)
 ## 3. Run
 
 ```bash
-cd tmp/devscope
-./run.sh                 # then open http://localhost:7788
+cd tmp/helm-dev
+./helm-dev                 # then open http://localhost:7788
 ```
 
-If `./run.sh` says permission denied, the copy lost its executable bit:
-`chmod +x run.sh`.
+If `./helm-dev` says permission denied, the copy lost its executable bit:
+`chmod +x helm-dev`.
 
 Once you have used it a while, this is the one to remember:
 
 ```bash
-./run.sh --resume        # restart whatever was running when you last quit
+./helm-dev --resume        # restart whatever was running when you last quit
 ```
 
-**Quitting devscope stops the services it started.** That is deliberate — it writes
+**Quitting helm-dev stops the services it started.** That is deliberate — it writes
 the list to `.cache/session.json` first, which is what `--resume` reads.
 
 ## 4. First five minutes
@@ -73,7 +73,7 @@ the list to `.cache/session.json` first, which is what `--resume` reads.
 
 ## 5. Configuration
 
-Machine settings live in `settings.json` next to devscope and are edited through the
+Machine settings live in `settings.json` next to helm-dev and are edited through the
 **⚙** button: how many services may start at once, the log buffer size, and whether
 frontend logs are muted. Your theme, filters and pane width are per-browser and kept
 in the browser.
@@ -82,27 +82,27 @@ Environment overrides:
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `DEVSCOPE_PORT` | `7788` | dashboard port |
-| `DEVSCOPE_REPO` | nearest `nx.json` above the cwd | repo to watch |
-| `DEVSCOPE_BUFFER_MB` | `50` | log buffer budget |
-| `DEVSCOPE_EDITOR` | `code -g {file}:{line}` | click-to-open command |
-| `DEVSCOPE_TAIL_DIR` | `<tmp>/devscope-logs-<user>` | drop dir for tailed logs |
+| `HELMDEV_PORT` | `7788` | dashboard port |
+| `HELMDEV_REPO` | nearest `nx.json` above the cwd | repo to watch |
+| `HELMDEV_BUFFER_MB` | `50` | log buffer budget |
+| `HELMDEV_EDITOR` | `code -g {file}:{line}` | click-to-open command |
+| `HELMDEV_TAIL_DIR` | `<tmp>/helm-dev-logs-<user>` | drop dir for tailed logs |
 
 Not a VSCode user:
 
 ```bash
-DEVSCOPE_EDITOR='idea --line {line} {file}' ./run.sh
+HELMDEV_EDITOR='idea --line {line} {file}' ./helm-dev
 ```
 
 ## 6. If something looks wrong
 
-**"Port 7788 is already in use"** — devscope is already running. Find it with
+**"Port 7788 is already in use"** — helm-dev is already running. Find it with
 `ss -lptn 'sport = :7788'`.
 
 **A service has a blue dot and no logs** — you started it in a terminal, not in
-devscope, so its output goes to that terminal. Either press **⟳** to restart it
-under devscope, or keep your terminal and tee into the drop dir:
-`npm start ikit 2>&1 | tee <tmp>/devscope-logs-<user>/ikit.log`
+helm-dev, so its output goes to that terminal. Either press **⟳** to restart it
+under helm-dev, or keep your terminal and tee into the drop dir:
+`npm start ikit 2>&1 | tee <tmp>/helm-dev-logs-<user>/ikit.log`
 
 **A service says "boot failed"** — the reason is on the row and in the log pane.
 Switch on **raw** and **noise** to see the whole build output.

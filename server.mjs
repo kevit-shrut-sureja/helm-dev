@@ -17,7 +17,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8')).version;
 
 /**
- * Confirms a path is an Nx workspace devscope can work with.
+ * Confirms a path is an Nx workspace helm-dev can work with.
  * @param candidate - the path to check
  * @returns the absolute path, or null when it is not a workspace
  */
@@ -29,7 +29,7 @@ function asWorkspace(candidate) {
 
 /**
  * Finds a workspace by walking up from the current directory, for the case where
- * devscope is run from inside one.
+ * helm-dev is run from inside one.
  * @returns the absolute repo root, or null
  */
 function workspaceAboveCwd() {
@@ -43,17 +43,22 @@ function workspaceAboveCwd() {
 const PRESETS_PATH = join(HERE, '.cache', 'presets.json');
 const SESSION_PATH = join(HERE, '.cache', 'session.json');
 const SETTINGS_PATH = join(HERE, 'settings.json');
-const PORT = Number(process.env.DEVSCOPE_PORT ?? 7788);
+const PORT = Number(process.env.HELMDEV_PORT ?? 7788);
 // Whatever the OS calls its temp directory, and per-user so two people on one
 // box do not tail each other's files.
-const TAIL_DIR = process.env.DEVSCOPE_TAIL_DIR ?? join(tmpdir(), `devscope-logs-${userInfo().username}`);
+const TAIL_DIR = process.env.HELMDEV_TAIL_DIR ?? join(tmpdir(), `helm-dev-logs-${userInfo().username}`);
 // Any editor, not just VSCode: {file} and {line} are substituted.
-const EDITOR_CMD = process.env.DEVSCOPE_EDITOR ?? 'code -g {file}:{line}';
+const EDITOR_CMD = process.env.HELMDEV_EDITOR ?? 'code -g {file}:{line}';
 let bufferBudget = 50 * 1024 * 1024;
 const MAX_PAYLOAD_BYTES = 8192;
-const DETECT_INTERVAL_MS = Number(process.env.DEVSCOPE_DETECT_MS ?? 8000);
+const DETECT_INTERVAL_MS = Number(process.env.HELMDEV_DETECT_MS ?? 8000);
 
-const CONTENT_TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
+const CONTENT_TYPES = {
+  '.html': 'text/html',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.svg': 'image/svg+xml',
+};
 
 const buffer = [];
 let bufferBytes = 0;
@@ -64,7 +69,7 @@ await mkdir(join(HERE, '.cache'), { recursive: true });
 let settings = await loadSettings(SETTINGS_PATH);
 const workspaces = new Map();
 const tailer = new LogTailer(TAIL_DIR);
-let stats = { services: {}, git: null, devscope: 0 };
+let stats = { services: {}, git: null, selfMB: 0 };
 
 /**
  * Adds a workspace and starts watching it. Several can be open at once: a
@@ -185,7 +190,7 @@ function startService(workspace, name, options = {}) {
 }
 
 /**
- * Re-scans every workspace for services started outside devscope.
+ * Re-scans every workspace for services started outside helm-dev.
  */
 async function refreshExternal() {
   let changed = false;
@@ -234,7 +239,7 @@ async function refreshStats() {
   stats = {
     services,
     git,
-    devscope: Math.round(process.memoryUsage().rss / 1048576),
+    selfMB: Math.round(process.memoryUsage().rss / 1048576),
     availableMB: await availableMemoryMB(),
     watches,
     buffered: buffer.length,
@@ -248,7 +253,7 @@ async function refreshStats() {
 // Open every registered workspace. A developer may be working in one repository
 // and running a single service from another at the same time.
 const registered = [...settings.repos];
-const fromEnv = asWorkspace(process.env.DEVSCOPE_REPO) ?? workspaceAboveCwd();
+const fromEnv = asWorkspace(process.env.HELMDEV_REPO) ?? workspaceAboveCwd();
 if (fromEnv !== null && !registered.some((repo) => repo.path === fromEnv)) {
   registered.push({ name: fromEnv.split('/').filter(Boolean).pop(), path: fromEnv });
   settings = await saveSettings(SETTINGS_PATH, settings, { repos: registered });
@@ -625,7 +630,7 @@ await tailer.start();
 
 server.on('error', (error) => {
   if (error.code === 'EADDRINUSE') {
-    process.stderr.write(`Port ${PORT} is already in use — devscope may already be running.\n`);
+    process.stderr.write(`Port ${PORT} is already in use — helm-dev may already be running.\n`);
     process.stderr.write(`Find it with:  ss -lptn 'sport = :${PORT}'\n`);
     process.exit(1);
   }
@@ -633,7 +638,7 @@ server.on('error', (error) => {
 });
 
 server.listen(PORT, '127.0.0.1', () => {
-  process.stdout.write(`devscope v${VERSION} → http://localhost:${PORT}\n`);
+  process.stdout.write(`helm-dev v${VERSION} → http://localhost:${PORT}\n`);
   if (workspaces.size === 0) {
     process.stdout.write('no workspace configured yet — open the page to point it at one\n');
   } else {
@@ -654,7 +659,7 @@ server.listen(PORT, '127.0.0.1', () => {
 let shuttingDown = false;
 
 /**
- * Stops every service devscope started, records them for `--resume`, and waits
+ * Stops every service helm-dev started, records them for `--resume`, and waits
  * for them to actually exit before leaving.
  * @param signal - the signal that triggered the shutdown
  */
@@ -693,7 +698,7 @@ function shutdown(signal) {
     if (alive === 0 || Date.now() > deadline) {
       clearInterval(waitForExit);
       if (alive > 0) process.stdout.write(`${alive} service(s) did not exit in time; they were signalled\n`);
-      if (stopped.length > 0) process.stdout.write(`bring them back with:  ./run.sh --resume\n`);
+      if (stopped.length > 0) process.stdout.write(`bring them back with:  ./helm-dev --resume\n`);
       process.exit(0);
     }
   }, 150);

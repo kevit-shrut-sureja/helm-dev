@@ -47,7 +47,7 @@ const el = {
 };
 
 /**
- * Posts JSON to a devscope endpoint.
+ * Posts JSON to a helm-dev endpoint.
  * @param path - the API path
  * @param body - the payload
  * @returns the parsed response
@@ -221,7 +221,7 @@ function serviceRowHtml(workspace, project) {
   const entry = workspace.statuses[project.name] ?? {};
   const unconfirmed = status === 'running' && entry.confirmed === false;
   const muted = workspace.muted.includes(project.name);
-  // Angular's dev server reloads itself; devscope neither watches nor restarts it.
+  // Angular's dev server reloads itself; helm-dev neither watches nor restarts it.
   const isFrontend = project.kind === 'frontend';
   const mode = entry.mode ?? 'plain';
   const failure = status === 'failed' ? entry.reason : null;
@@ -231,7 +231,7 @@ function serviceRowHtml(workspace, project) {
   const memory = state.stats.services?.[`${repo}::${project.name}`];
 
   const notes = [`${repo}: ${project.root}`];
-  if (status === 'external') notes.push('started outside devscope — logs only via tail file');
+  if (status === 'external') notes.push('started outside helm-dev — logs only via tail file');
   if (stale) notes.push(`${changed} file(s) changed since it started`);
   if (status === 'starting') notes.push('still booting — logs stream as it comes up');
   if (status === 'queued') notes.push('waiting to start — services boot a few at a time');
@@ -311,6 +311,10 @@ function renderServices() {
         <span class="repo-caret">${collapsed ? '&#9656;' : '&#9662;'}</span>
         <span class="repo-name">${escapeHtml(workspace.name)}</span>
         ${liveHere > 0 ? `<span class="repo-live">${liveHere} up</span>` : ''}
+        ${liveHere > 0
+          ? `<button class="mini repo-stop" data-stop-repo="${escapeHtml(workspace.name)}"
+              title="stop the ${liveHere} running service(s) in ${escapeHtml(workspace.name)}">&times;</button>`
+          : ''}
       </div>
       ${git ? `<div class="repo-branch" title="${escapeHtml(git.branch)}">${escapeHtml(git.branch)}</div>` : ''}
       ${rows}
@@ -567,7 +571,7 @@ function schedulePaint() {
 }
 
 /**
- * Explains an empty log pane, which is almost always a service devscope did not spawn.
+ * Explains an empty log pane, which is almost always a service helm-dev did not spawn.
  * @returns the empty-state HTML
  */
 /**
@@ -640,12 +644,12 @@ function emptyStateHtml() {
   if (externals.length > 0) {
     return `<div class="empty">
       <p><strong>${escapeHtml(names(externals))}</strong> ${externals.length === 1 ? 'was' : 'were'} started outside
-      devscope, so its output goes to that terminal — devscope cannot attach to a process it did not spawn.</p>
+      helm-dev, so its output goes to that terminal — helm-dev cannot attach to a process it did not spawn.</p>
       <p>Two ways to get these logs here:</p>
       <ol>
-        <li>Press <strong>&#10227;</strong> on the service to stop it and start it under devscope.</li>
+        <li>Press <strong>&#10227;</strong> on the service to stop it and start it under helm-dev.</li>
         <li>Keep your terminal and tee into the drop dir:
-          <code>npm start ${escapeHtml(externals[0].name)} 2&gt;&amp;1 | tee ${escapeHtml(state.tailDir ?? '/tmp/devscope-logs')}/${escapeHtml(externals[0].name)}.log</code></li>
+          <code>npm start ${escapeHtml(externals[0].name)} 2&gt;&amp;1 | tee ${escapeHtml(state.tailDir ?? '/tmp/helm-dev-logs')}/${escapeHtml(externals[0].name)}.log</code></li>
       </ol>
     </div>`;
   }
@@ -839,6 +843,18 @@ async function showDetail(record) {
 /* ---------- wiring ---------- */
 
 el.services.addEventListener('click', async (event) => {
+  const stopRepo = event.target.closest('.repo-stop');
+  if (stopRepo) {
+    const repo = stopRepo.dataset.stopRepo;
+    const live = liveServices().filter((service) => service.repo === repo);
+    if (live.length === 0) return;
+    if (!confirm(`Stop ${live.length} service(s) in ${repo}?\n\n${live.map((s2) => s2.name).join(', ')}`)) return;
+    stopRepo.textContent = '…';
+    await post('/api/stop-all', { repo });
+    renderServices();
+    return;
+  }
+
   const head = event.target.closest('.repo-head');
   if (head) {
     const repo = head.dataset.repoHead;
@@ -904,7 +920,7 @@ el.services.addEventListener('click', async (event) => {
  * Renders the repository and footprint readout in the header.
  */
 function renderStats() {
-  const { git, devscope, services } = state.stats;
+  const { git, selfMB, services } = state.stats;
   const running = Object.keys(services ?? {}).length;
   const serviceTotal = Object.values(services ?? {}).reduce((sum, mb) => sum + mb, 0);
 
@@ -932,7 +948,7 @@ function renderStats() {
       `<span title="log buffer — oldest lines are dropped once full">buffer ${state.stats.bufferMB}/${state.stats.bufferMaxMB}MB</span>`,
     );
   }
-  if (devscope) bits.push(`<span title="devscope's own memory">devscope ${devscope}MB</span>`);
+  if (selfMB) bits.push(`<span title="helm-dev's own memory">helm-dev ${selfMB}MB</span>`);
   document.getElementById('statsBar').innerHTML = bits.join('<span class="sep">|</span>');
 }
 
@@ -1204,7 +1220,7 @@ events.onmessage = (message) => {
 const themeSelect = document.getElementById('theme');
 const storedTheme = (() => {
   try {
-    return localStorage.getItem('devscope.theme');
+    return localStorage.getItem('helmdev.theme');
   } catch {
     return null;
   }
@@ -1218,7 +1234,7 @@ function applyTheme(name) {
   document.documentElement.dataset.theme = name;
   themeSelect.value = name;
   try {
-    localStorage.setItem('devscope.theme', name);
+    localStorage.setItem('helmdev.theme', name);
   } catch {
     // Private windows disallow storage; the theme simply will not persist.
   }
@@ -1229,7 +1245,7 @@ themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
 
 const storedWidth = (() => {
   try {
-    return Number(localStorage.getItem('devscope.detailWidth'));
+    return Number(localStorage.getItem('helmdev.detailWidth'));
   } catch {
     return 0;
   }
@@ -1243,7 +1259,7 @@ function setDetailWidth(px) {
   const clamped = Math.min(Math.max(px, 320), window.innerWidth - 360);
   el.split.style.setProperty('--detail-width', `${clamped}px`);
   try {
-    localStorage.setItem('devscope.detailWidth', String(clamped));
+    localStorage.setItem('helmdev.detailWidth', String(clamped));
   } catch {
     // Not persisting the width is harmless.
   }
@@ -1275,7 +1291,7 @@ document.getElementById('resizer').addEventListener('mousedown', (event) => {
  */
 function readPref(key, fallback) {
   try {
-    const raw = localStorage.getItem(`devscope.${key}`);
+    const raw = localStorage.getItem(`helmdev.${key}`);
     return raw === null ? fallback : JSON.parse(raw);
   } catch {
     return fallback;
@@ -1289,7 +1305,7 @@ function readPref(key, fallback) {
  */
 function writePref(key, value) {
   try {
-    localStorage.setItem(`devscope.${key}`, JSON.stringify(value));
+    localStorage.setItem(`helmdev.${key}`, JSON.stringify(value));
   } catch {
     // Storage is unavailable in private windows; preferences simply reset.
   }

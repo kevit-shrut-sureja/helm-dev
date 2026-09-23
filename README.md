@@ -1,271 +1,54 @@
-# devscope
+<div align="center">
+  <img src="public/logo.svg" width="56" alt="" />
+  <h1>helm-dev</h1>
+  <p><em>A local control panel for Nx monorepos.</em></p>
+</div>
 
-A local, zero-dependency log console for the Chatomate monorepo. Runs services,
-merges their logs into one filterable stream, and resolves any log line back to
-the exact `file:line` that emitted it — one click from there into VSCode, or into
-a ready-made Claude prompt.
+Runs your services, merges their logs into one filterable stream, and resolves
+each log line back to the source line that printed it — one click from there into
+your editor, or into a ready-made Claude prompt.
 
-Lives outside the repo on purpose (nothing committed yet). Node 22, no `npm install`.
+Built for a working day that looks like this: five services running, one of them
+misbehaving, and the log line that explains it buried somewhere in three thousand
+others.
 
-## Sharing it with someone
-
-Copy the `devscope` folder into **their** repo at the same place, `<repo>/tmp/devscope`,
-and run `./run.sh`. It finds the repo by walking up for `nx.json`, and `tmp/` is
-already gitignored, so nothing needs configuring and nothing reaches git.
-
-Before zipping it, delete `.cache/` — it holds a 2MB index and a session file from
-your machine. Not doing so is no longer harmful (the index records the repo path
-and commit it was built from and rebuilds itself when either differs), but it saves
-them a pointless 2MB.
-
-Requirements on their side: **Node 20+** (recursive file watching) and **Linux**.
-The Linux parts are detecting services started outside devscope (`/proc/<pid>/cwd`),
-per-service memory (`ps`) and killing a process tree. On macOS those degrade
-quietly rather than crashing — the log viewer, index and runner still work. There
-is no Windows support.
-
-If they do not use VSCode, `DEVSCOPE_EDITOR` takes any command, e.g.
-`DEVSCOPE_EDITOR='idea --line {line} {file}' ./run.sh`.
-
-## Run
+**No dependencies. No build step. No install.** Node's standard library only.
 
 ```bash
-cd <this folder>
-DEVSCOPE_REPO=/home/kevit/work/chatomate ./run.sh
-# → http://localhost:7788
+git clone git@github.com:kevit-shrut-sureja/helm-dev.git
+cd helm-dev && ./helm-dev          # → http://localhost:7788
 ```
 
-Env:
+On first run it asks for the path to an Nx workspace. After that:
 
-| Var | Default | Purpose |
-|-----|---------|---------|
-| `DEVSCOPE_REPO` | nearest `nx.json` above cwd | monorepo to watch |
-| `DEVSCOPE_PORT` | `7788` | dashboard port |
-| `DEVSCOPE_TAIL_DIR` | `<os temp>/devscope-logs-<user>` | drop dir for tailed log files |
-| `DEVSCOPE_EDITOR` | `code -g {file}:{line}` | command used by "open in VSCode"; `{file}` and `{line}` are substituted |
-| `DEVSCOPE_BUFFER_MB` | `50` | log buffer budget in megabytes (FIFO) |
-| `DEVSCOPE_DETECT_MS` | `8000` | how often to scan for externally started services |
-
-## Stats
-
-The header shows the current git branch, modified and untracked counts, how many
-services are up with their combined memory, and devscope's own RSS. Each running
-service shows its own memory in the sidebar — the whole process tree, since an
-`nx serve` is a wrapper chain with the real application at the bottom.
-
-**Colour themes** — slate, midnight, carbon, black (true #000, for OLED panels), amber and light; remembered per browser.
-The detail pane is **drag-resizable** from its left edge, also remembered.
-
-## Footprint
-
-~74MB RSS steady state, of which ~41MB is bare Node — so devscope itself costs
-about 33MB. It holds the call-site index (10,449 entries, ~5MB retained) and an
-8,000-line ring buffer (~2MB); everything else is V8 overhead.
-
-This is close to the floor for Node. Measured alternatives: V8 flag tuning took
-it from 82MB to 74MB and no further; the same index and buffer in Go measured
-**20.6MB** (see `../go-comparison`). If the footprint has to go lower, a Go port
-is the only thing that moves it meaningfully.
-
-Kept small deliberately:
-
-- the index is built in a **child process that then exits**, so the garbage from
-  scanning ~6k files never lands in the long-running server (this alone took it
-  from 110MB to 68MB);
-- only **sentence-like constants** are indexed (8+ chars containing a space),
-  which cut 11,179 constant entries to 2,975 without losing a single match;
-- one **shared recursive watch per directory**, fanned out to every service that
-  depends on it, rather than one watch per service per lib;
-- **frontend projects are muted by default** — Angular build output is huge and
-  rarely what you are debugging, so it is not even buffered until you unmute;
-- services **boot one at a time** through a queue, so clicking ten of them does
-  not start ten cold Nx builds at once;
-- idle cost is one `ps` every 8s; everything else is event-driven (SSE, inotify).
+```bash
+./helm-dev --resume     # restart whatever was running when it last stopped
+./helm-dev --reindex    # rebuild the log-site index
+```
 
 ## What it does
 
-**Run services** — every Nx project with a `serve` target is listed.
+- **Runs services.** Every Nx project with a `serve` target, started a few at a
+  time so a laptop survives it, with a warning first when memory is short or the
+  port is taken.
+- **Merges their logs.** One stream, filtered by level, text, or service, with
+  build noise and repeated lines folded away.
+- **Finds the source.** Click a line to see the `file:line` that printed it, the
+  surrounding code, and its payload — then open it in your editor.
+- **Watches several workspaces at once.** Work in one repository while running a
+  single service from another; both appear as their own section.
 
-| Click | Does |
-|-------|------|
-| the service **name** | focuses the log pane on that service (click again to unfocus) — never starts or stops anything |
-| `muted` badge | turns that service's logs on (frontends start muted) |
-| ▶ | starts it under devscope and focuses it |
-| ⟳ | stops the running process and starts a fresh one |
-| × | stops it |
+## Requirements
 
-Save the running set as a preset ("campaign work = platform-apis + excalibur + ikit").
+| | |
+|---|---|
+| **Node** | 20 or newer |
+| **OS** | Linux. On macOS it runs, but service detection, per-service memory and process-tree cleanup do nothing. No Windows support. |
+| **Port** | 7788 free (`HELMDEV_PORT` to change) |
+| **Editor** | `code` on your PATH for click-to-open; any editor via `HELMDEV_EDITOR` |
 
-Running services sort to the top of the list; queued ones show their position.
-
-**Boot state** — amber and pulsing while building and booting, green only once
-the *application* reports it is up (`Nest application successfully started`,
-`Application bundle generation complete`, …). Build-time lines like `webpack
-compiled successfully` and `Debugger listening on` deliberately do **not** count:
-they appear minutes before the app is ready, and are still printed by one that
-then dies. If the app fails to boot while Nx keeps the task alive, the row goes
-red with `boot failed` and the reason. A service that prints no recognisable
-signal within 60s is shown green but badged `unconfirmed`. Blue dot = started
-outside devscope.
-
-**clear** empties the screen only — the buffer is untouched and **restore**
-brings the lines back.
-
-**Already-running services** — devscope scans `ps` every 4s for `nx serve`
-processes and confirms each one's `/proc/<pid>/cwd` belongs to *this* repo, so a
-service running from another workspace is never claimed. Those show a blue dot
-and an `ext` tooltip. It can stop and restart them, but **it cannot retroactively
-capture their stdout** — see "Logs from an already-running service" below.
-
-**Stale detection** — because `npm start` runs with `--watch=false`, a running
-service silently goes stale the moment you edit code. devscope watches each
-running service's `src/` *and every `@chatomate/*` lib it imports*; on any change
-the row turns amber with an `NΔ` badge. Hit ⟳ to stop the old process and start a
-fresh one.
-
-**Logs → source** — at startup it indexes every `logger.{log,error,warn,debug,…}`
-call in `apps/` + `libs/` (~4k sites, ~0.6s), recording the message literal, the
-enclosing class and the `file:line`. At runtime it matches a log's `msg` against
-that index, narrowed by the pino `context` field. Confidence is reported:
-
-Log messages are rarely plain literals, so the index resolves them four ways:
-
-| Badge | How it matched | Example in this repo |
-|-------|----------------|----------------------|
-| `exact` | the literal in the call | `logger.debug('setFlowStepTimeout(): called')` |
-| `pattern` | a template literal, compiled to a regex | `` logger.log(`Sending ${id}`) `` |
-| `prefix` | a `console.log('label', value)` — only the label is in the source | `console.log('pricingFromRedis', obj)` |
-| `constant` | the message is an enum/constant; found by value, then traced to the call site that logs that name | `logger.error(BOT_ERROR_CODES.BOT_NOT_AUTHENTICATED)` |
-| `definition` | the constant's value is known but no call site references it — points at where the text is defined | shared error maps |
-| `ambiguous` | several sites match; **all of them are listed** in the detail pane, each openable | a message used in more than one place |
-| `none` | nothing indexed matches — e.g. `logger.error(err)`, or framework logs from `node_modules` (Nest's `RouterExplorer` lines) |
-
-### What string matching cannot do
-
-Resolution works by matching the printed message back to the source. That is exact
-when the message appears once, and a guess when it does not. Measured on this repo:
-
-| | Count | Share |
-|---|---:|---:|
-| Messages logged from exactly one place | 4,251 | **91%** |
-| Logged from several places in different classes | 143 | resolved by the pino `context` |
-| Logged from several places **in the same class** | 279 | cannot be separated |
-
-For that last group the log line genuinely does not contain enough information —
-same text, same class, and the log level differs in only 8 of 345 cases, so level
-does not help either. devscope therefore does not guess: it badges the result
-`ambiguous` and lists **every** candidate `file:line`, each one clickable straight
-into VSCode.
-
-If you ever need certainty rather than candidates, the only source of truth is the
-runtime: a `mixin` in the dev logger config capturing one stack frame per log,
-which turns every line into an exact location at the cost of a few microseconds
-per call and needing source maps resolved through the Nx build.
-
-**Per-service logger styles** are handled: `nestjs-pino` (`this.logger.*`), legacy
-`platform`'s log4js-style wrapper (`log.error('msg', arg)` — 2,854 call sites),
-plain `console.*`, and Nest's own bootstrap logger. A `console.*` hit is badged
-**temporary debug**, since those are the lines you added while developing and
-will want to delete.
-
-Click the path to open it in VSCode, or **copy Claude prompt** to get the log
-line, its resolved source location, the payload and the 15 preceding lines from
-that service, formatted as a question — paste straight into Claude Code.
-
-## Logs from an already-running service
-
-stdout of a process devscope did not spawn cannot be attached to — the log pane
-says so explicitly when you focus such a service. Two options:
-
-1. **Restart it under devscope** (⟳) — full capture, nothing else to do.
-2. **Tee your terminal into the drop dir** — keeps your own terminal:
-   ```bash
-   npm start ikit 2>&1 | tee /tmp/devscope-logs/ikit.log
-   ```
-   devscope tails `<service>.log` and folds it into the same stream. The file
-   name must match the Nx project name.
-
-## Log formats
-
-Both are parsed:
-
-- **pino-pretty** (current default) — ANSI stripped, level/context/message
-  recovered, indented continuation lines folded back into their record.
-- **Nest's built-in logger** (`[Nest] 123 - date LOG [NestFactory] …`) — the
-  format services print while bootstrapping, before pino takes over.
-- **Nx / webpack tooling chatter** — kept as `raw` so a normal build never
-  renders as red errors.
-- **NDJSON** — richer and more reliable. Requires a one-line change in
-  `libs/shared-configs/src/lib/logger.config.ts` to skip the pretty stream when
-  `LOG_FORMAT=json`; devscope sets that env var on the services it starts.
-  The change plus the matching `.env.example` entries are saved next to this
-  folder as `repo-changes-for-devscope.patch`:
-  ```bash
-  cd /home/kevit/work/chatomate && git apply ../path/to/repo-changes-for-devscope.patch
-  ```
-
-## Gotcha worth knowing
-
-Services are spawned with `--output-style=stream-without-prefixes`. Nx's default
-`static` style **buffers a task's entire output until the task finishes**, which
-for a long-running `serve` means no logs at all until it dies. `stream` flushes
-live; `-without-prefixes` stops Nx prepending `<project>: ` to every line, which
-would otherwise break the message → call-site matching.
-
-## Watch / live reload
-
-Only frontends have it, and only when asked for.
-
-| Button | Runs | Cost |
-|---|---|---|
-| **▶** | `nx serve <app> --watch=false --liveReload=false` | the cheap way; no rebuild on change |
-| **▶w** | `nx serve <app>` (Angular's defaults) | rebuilds and refreshes the browser on change, at a large memory cost |
-
-A service started with **▶w** carries a **live** badge so the mode is obvious at a
-glance, and `--resume` restores each service in the mode it was running in.
-
-Backends have no equivalent and are always started plain, exactly as they were
-before: `@nx/js:node` delegates watching to the Nx daemon, which does not run
-here (`nx daemon --status` → *not running*, and forcing `NX_DAEMON=true` does not
-change it because devscope pipes stdout, which Nx treats like CI). They still get
-the `NΔ` stale badge so you know when a manual **⟳** is due.
-
-## Jobs that finish
-
-A worker is supposed to end, so finishing is a result rather than a failure. The
-row goes to a hollow green dot with a **done 21.6s** badge, keeps its logs, and
-offers **▶** to run it again.
-
-Detecting that is less obvious than it sounds. Each job ends in its own way, and
-`nx serve` does **not** exit when the job does — it prints
-
-```
-NX  Process exited with code 0, waiting for changes to restart...
-```
-
-and then sits idle waiting for a file change. So devscope watches for that one Nx
-line, which is identical for every service, rather than trying to recognise each
-job's own closing messages. Exit code 0 on a `type:job` project means **completed**;
-any other code means **failed** with the reason; a non-job exiting 0 is **stopped**.
-The idle wrapper is then terminated, so it cannot silently re-run the job the next
-time a file changes.
-
-Jobs are also marked up as soon as they log anything of their own — they never
-print "listening on a port", so without that they used to sit in `starting` for a
-minute before being labelled `unconfirmed`.
-
-## When a service fails to start
-
-The row turns red with **boot failed** and the reason, taken from the most
-specific error line rather than Nx's generic `Failed tasks:`. Focusing the service
-shows the reason in the log pane with a pointer to turn on **raw** and **noise**
-for the full build output. Verified against a real failure:
-`ichnaea` → *Error: SAAS_DB_URI is required*.
-
-A failed start no longer leaves debris: stopping a service signals its whole
-process tree, not just the process group, because a child that started its own
-group used to survive, keep the port, and make the next start fail with a
-misleading error.
+See [`SETUP.md`](SETUP.md) for a walkthrough, and [`CLAUDE.md`](CLAUDE.md) for the
+conventions and the decisions that look odd until you know why.
 
 ## Settings
 
@@ -273,7 +56,7 @@ Click the **⚙** next to the title. Two kinds of setting, kept deliberately apa
 
 | Where | What | Why there |
 |---|---|---|
-| `settings.json` (next to devscope, server-side) | start concurrency, log buffer MB, mute frontends | properties of **this machine**, enforced by the server; must apply with no browser open |
+| `settings.json` (next to helm-dev, server-side) | start concurrency, log buffer MB, mute frontends | properties of **this machine**, enforced by the server; must apply with no browser open |
 | browser `localStorage` | theme, detail-pane width, level filters, focused services, noise toggle | per-viewer taste; should not follow the machine or affect a colleague |
 
 **Start concurrency** decides how many services may cold-start at once. Each start
@@ -287,7 +70,7 @@ without a restart.
 
 ## Timestamps
 
-A record carries **the time the service logged it**, not the time devscope read
+A record carries **the time the service logged it**, not the time helm-dev read
 the pipe — the two differ by however long the line sat in the buffer, which is
 exactly the difference that matters when you are correlating backend events.
 
@@ -305,9 +88,9 @@ a ticket or a database query.
 
 Logs are **never written to disk**. They live in a fixed-size FIFO buffer in
 memory: once the budget is full, the oldest lines are dropped to make room. A
-devscope restart loses the buffer, and so does restarting a service.
+helm-dev restart loses the buffer, and so does restarting a service.
 
-The cap is a **byte budget, not a line count** (`DEVSCOPE_BUFFER_MB`, default
+The cap is a **byte budget, not a line count** (`HELMDEV_BUFFER_MB`, default
 50MB), because size per line varies hugely — only 30% of lines carry a payload
 but those payloads are 63% of all bytes. A line count would mean a buffer that is
 tiny in one session and enormous in another. A single oversized payload is
@@ -324,11 +107,11 @@ Why 32MB, measured on this machine:
 A record costs ~305 bytes of heap and a filter pass is linear, so 32MB keeps
 search comfortably inside the 120ms debounce while holding several hours of idle
 logging (~146 lines/min with services idle). At 50MB a filter pass costs 35–70ms, still comfortably inside the 120ms search
-debounce. Change it with `DEVSCOPE_BUFFER_MB`; the UI shows live usage as
+debounce. Change it with `HELMDEV_BUFFER_MB`; the UI shows live usage as
 `buffer 12/50MB`.
 
-Stopping devscope stops the services it started. It writes the list to
-`.cache/session.json` first, so `./run.sh --resume` brings the same set back.
+Stopping helm-dev stops the services it started. It writes the list to
+`.cache/session.json` first, so `./helm-dev --resume` brings the same set back.
 
 ## Daily-use behaviour
 
@@ -430,4 +213,4 @@ public/             single page, vanilla JS
   `claude -p` output into a side panel is the next step.
 - **DB panel** — read-only Mongo/Redis queries next to the logs.
 - Restarting an *external* service (kill its process group, restart under
-  devscope) is implemented but has not been exercised against a live service.
+  helm-dev) is implemented but has not been exercised against a live service.

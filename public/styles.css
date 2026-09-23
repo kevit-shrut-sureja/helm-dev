@@ -323,7 +323,9 @@ button.mini:hover { background: var(--panel-2); }
 /* ---------- header stats ---------- */
 
 .brand-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.brand-row select {
+.brand-mark { white-space: nowrap; }
+.brand-row > span:first-child { min-width: 0; overflow: hidden; }
+.panel-body select {
   font: inherit;
   font-size: 11px;
   color: var(--muted);
@@ -457,6 +459,8 @@ button.mini:hover { background: var(--panel-2); }
 .repo-head .repo-caret { font-size: 9px; flex: none; opacity: 0.7; }
 .repo-head .repo-name { color: var(--text); font-weight: 700; flex: none; }
 .repo-head .repo-live { margin-left: auto; color: var(--green); white-space: nowrap; flex: none; }
+.repo-head .repo-stop { flex: none; color: var(--muted); padding: 0 5px; line-height: 15px; }
+.repo-head .repo-stop:hover { color: var(--red); border-color: var(--red); }
 
 /* The branch sits under the workspace name and is clipped rather than wrapped;
    the full value is in the tooltip. */
@@ -547,6 +551,8 @@ button.mini.pin.on:hover { border-color: var(--amber); }
   white-space: nowrap;
 }
 .repo-head .repo-live { margin-left: auto; color: var(--green); white-space: nowrap; flex: none; }
+.repo-head .repo-stop { flex: none; color: var(--muted); padding: 0 5px; line-height: 15px; }
+.repo-head .repo-stop:hover { color: var(--red); border-color: var(--red); }
 .repo-head .repo-name { flex: none; }
 
 
@@ -632,3 +638,18 @@ button.mini.pin.on:hover { border-color: var(--amber); }
 .shortcuts td { padding: 3px 0; vertical-align: top; }
 .shortcuts td:first-child { width: 46px; }
 .shortcuts td:last-child { color: var(--muted); }
+
+/* ---------- brand ---------- */
+
+.brand-mark { display: inline-flex; align-items: center; gap: 7px; }
+.logo { width: 16px; height: 16px; color: var(--accent); flex: none; }
+
+.panel-body select {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 8px;
+}

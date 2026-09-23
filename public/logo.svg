@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32" role="img" aria-label="helm-dev">
+  <!-- A ship's helm: the wheel you watch from and steer with. Drawn in
+       currentColor so it takes the active theme, and kept to thick strokes so it
+       still reads at favicon size. -->
+  <g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+    <circle cx="16" cy="16" r="7.4" />
+    <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none" />
+    <!-- spokes, continuing past the rim into handles -->
+    <path d="M16 3.4v6.2M16 22.4v6.2M3.4 16h6.2M22.4 16h6.2" />
+    <path d="M7.1 7.1l4.4 4.4M20.5 20.5l4.4 4.4M24.9 7.1l-4.4 4.4M11.5 20.5l-4.4 4.4" opacity="0.75" />
+  </g>
+</svg>

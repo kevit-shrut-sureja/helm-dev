@@ -1,17 +1,17 @@
 {
-  "name": "devscope",
-  "version": "0.3",
+  "name": "helm-dev",
+  "version": "0.4",
   "private": true,
-  "description": "Local log console for the Chatomate monorepo: runs services, merges their logs, and resolves each line back to the source that printed it.",
+  "description": "Local control panel for Nx monorepos: runs services, merges their logs, and resolves each line back to the source that printed it.",
   "type": "module",
   "main": "server.mjs",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "start": "./run.sh",
-    "resume": "./run.sh --resume",
-    "reindex": "./run.sh --reindex"
+    "start": "./helm-dev",
+    "resume": "./helm-dev --resume",
+    "reindex": "./helm-dev --reindex"
   },
   "dependencies": {},
   "devDependencies": {}

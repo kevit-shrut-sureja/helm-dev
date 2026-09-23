@@ -2,24 +2,27 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>devscope</title>
+    <title>helm-dev</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <aside class="sidebar">
       <div class="brand">
         <div class="brand-row">
-          <span>devscope<span class="version" id="version"></span></span>
+          <span class="brand-mark">
+            <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+              <g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round">
+                <circle cx="16" cy="16" r="7.4" />
+                <circle cx="16" cy="16" r="2.6" fill="currentColor" stroke="none" />
+                <path d="M16 3.4v6.2M16 22.4v6.2M3.4 16h6.2M22.4 16h6.2" />
+                <path d="M7.1 7.1l4.4 4.4M20.5 20.5l4.4 4.4M24.9 7.1l-4.4 4.4M11.5 20.5l-4.4 4.4" opacity="0.75" />
+              </g>
+            </svg>
+            helm-dev<span class="version" id="version"></span>
+          </span>
           <button id="helpBtn" class="mini" title="keyboard shortcuts (?)">?</button>
           <button id="settingsBtn" class="mini" title="settings">&#9881;</button>
-          <select id="theme" title="colour theme">
-            <option value="slate">slate</option>
-            <option value="midnight">midnight</option>
-            <option value="carbon">carbon</option>
-            <option value="black">black</option>
-            <option value="amber">amber</option>
-            <option value="light">light</option>
-          </select>
         </div>
         <div id="repoName" class="repo"></div>
         <div id="branchName" class="branch-line"></div>
@@ -76,7 +79,7 @@
       </header>
 
       <div class="panel-body">
-        <p class="panel-note">Stored in <code>settings.json</code> next to devscope, so they apply to this
+        <p class="panel-note">Stored in <code>settings.json</code> next to helm-dev, so they apply to this
           machine. Theme, pane widths and filters stay in your browser.</p>
 
         <h4>Workspaces</h4>
@@ -88,6 +91,20 @@
         </div>
         <small id="addRepoError" class="panel-error"></small>
         <small>Drag a section in the sidebar to reorder them.</small>
+
+        <h4>Appearance</h4>
+        <label class="setting">
+          <span>Theme</span>
+          <select id="theme">
+            <option value="slate">slate</option>
+            <option value="midnight">midnight</option>
+            <option value="carbon">carbon</option>
+            <option value="black">black</option>
+            <option value="amber">amber</option>
+            <option value="light">light</option>
+          </select>
+          <small>Kept in this browser, not in settings.json.</small>
+        </label>
 
         <h4>Starting services</h4>
         <label class="setting">
@@ -135,8 +152,8 @@
 
     <div id="firstRun" class="first-run" hidden>
       <div class="first-run-card">
-        <h2>Point devscope at a workspace</h2>
-        <p>devscope runs the services of an Nx monorepo and reads their logs. Give it the
+        <h2>Point helm-dev at a workspace</h2>
+        <p>helm-dev runs the services of an Nx monorepo and reads their logs. Give it the
           absolute path to one — the folder containing <code>nx.json</code>.</p>
         <label>
           <span>Workspace path</span>
