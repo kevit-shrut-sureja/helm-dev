@@ -62,6 +62,21 @@ async function post(path, body) {
 }
 
 /**
+ * Starts a service, showing anything the server flagged as risky first. The
+ * checks exist because the expensive mistakes — swapping the machine, or binding
+ * a port something else holds — are invisible until they have already happened.
+ * @param name - the project name
+ * @param options - `live` for a frontend dev server with live reload
+ */
+async function startService(name, options = {}) {
+  const result = await post('/api/start', { name, ...options });
+  if (!result.warnings) return;
+  const text = result.warnings.map((warning) => `• ${warning.message}`).join('\n\n');
+  if (!confirm(`Start ${name} anyway?\n\n${text}`)) return;
+  await post('/api/start', { name, ...options, force: true });
+}
+
+/**
  * Escapes text for safe insertion into innerHTML.
  * @param value - the raw text
  * @returns the escaped text
@@ -775,7 +790,7 @@ el.services.addEventListener('click', async (event) => {
   }
   if (action === 'live') {
     state.focus.add(name);
-    await post('/api/start', { name, live: true });
+    await startService(name, { live: true });
     renderServices();
     renderFocus();
     renderLogs();
@@ -783,7 +798,7 @@ el.services.addEventListener('click', async (event) => {
   }
   if (action === 'start') {
     state.focus.add(name);
-    await post('/api/start', { name });
+    await startService(name);
     renderServices();
     renderFocus();
     renderLogs();
@@ -896,7 +911,7 @@ el.presets.addEventListener('click', async (event) => {
   }
   const preset = event.target.dataset.preset;
   if (preset) {
-    for (const name of state.presets[preset]) await post('/api/start', { name });
+    for (const name of state.presets[preset]) await startService(name);
   }
 });
 

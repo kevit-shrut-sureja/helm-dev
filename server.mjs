@@ -11,6 +11,7 @@ import { loadIndex } from './lib/log-index.mjs';
 import { ServiceRunner } from './lib/runner.mjs';
 import { SourceWatcher } from './lib/watcher.mjs';
 import { gitStatus, serviceMemory } from './lib/stats.mjs';
+import { availableMemoryMB, preflight } from './lib/preflight.mjs';
 import { LogTailer } from './lib/tailer.mjs';
 import { loadSettings, saveSettings } from './lib/settings.mjs';
 
@@ -248,6 +249,7 @@ async function refreshStats() {
     services,
     git,
     devscope: Math.round(process.memoryUsage().rss / 1048576),
+    availableMB: await availableMemoryMB(),
     watches: watcher.watchCount(),
     buffered: buffer.length,
     bufferMB: Math.round((bufferBytes / 1048576) * 10) / 10,
@@ -397,7 +399,20 @@ const routes = {
   },
 
   'POST /api/start': async (request, response) => {
-    const { name, live } = await readJsonBody(request);
+    const { name, live, force } = await readJsonBody(request);
+    const project = projectByName(name);
+    if (!project) {
+      sendJson(response, 404, { error: `unknown service "${name}"` });
+      return;
+    }
+    if (force !== true) {
+      const booting = Object.values(runner.statuses()).filter((entry) => entry.status === 'starting').length;
+      const warnings = await preflight(repoRoot, project, booting);
+      if (warnings.length > 0) {
+        sendJson(response, 409, { warnings });
+        return;
+      }
+    }
     const queued = startService(name, { live });
     if (queued) await watchSources(name);
     sendJson(response, 200, { queued, position: runner.queued().indexOf(name) + 1 });
