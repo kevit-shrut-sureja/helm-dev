@@ -112,6 +112,26 @@
       </label>
     </div>
 
+    <div id="firstRun" class="first-run" hidden>
+      <div class="first-run-card">
+        <h2>Point devscope at a workspace</h2>
+        <p>devscope runs the services of an Nx monorepo and reads their logs. Give it the
+          absolute path to one — the folder containing <code>nx.json</code>.</p>
+        <label>
+          <span>Repository path</span>
+          <input type="text" id="repoPath" placeholder="/home/you/work/chatomate" autocomplete="off" />
+        </label>
+        <label>
+          <span>Name <small>optional — useful if you keep two checkouts of the same repo</small></span>
+          <input type="text" id="repoLabel" placeholder="chatomate" autocomplete="off" />
+        </label>
+        <div class="first-run-actions">
+          <button id="repoSave">use this workspace</button>
+          <span id="repoError" class="first-run-error"></span>
+        </div>
+      </div>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

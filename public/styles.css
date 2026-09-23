@@ -518,3 +518,32 @@ button.watch-start { font-size: 10px; }
 
 .sidebar-resizer { cursor: col-resize; background: var(--border); }
 .sidebar-resizer:hover { background: var(--accent); }
+
+/* ---------- first run ---------- */
+
+.first-run {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.first-run-card {
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+.first-run-card h2 { margin: 0 0 8px; font-size: 16px; }
+.first-run-card p { color: var(--muted); line-height: 1.6; margin: 0 0 18px; }
+.first-run-card code { color: var(--accent); }
+.first-run-card label { display: block; margin-bottom: 14px; }
+.first-run-card label > span { display: block; margin-bottom: 5px; font-size: 12px; }
+.first-run-card label small { color: var(--muted); font-weight: 400; }
+.first-run-card input { width: 100%; }
+.first-run-actions { display: flex; align-items: center; gap: 10px; }
+.first-run-error { color: var(--red); font-size: 11px; line-height: 1.5; }

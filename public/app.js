@@ -996,6 +996,32 @@ document.getElementById('reindex').addEventListener('click', async (event) => {
 /* ---------- boot ---------- */
 
 const initial = await (await fetch('/api/state')).json();
+
+if (initial.needsRepo) {
+  const panel = document.getElementById('firstRun');
+  const error = document.getElementById('repoError');
+  const pathInput = document.getElementById('repoPath');
+  panel.hidden = false;
+  pathInput.focus();
+
+  const submit = async () => {
+    error.textContent = '';
+    const path = pathInput.value.trim();
+    if (path.length === 0) return;
+    const result = await post('/api/repos', { path, name: document.getElementById('repoLabel').value });
+    if (result.error) {
+      error.textContent = result.error;
+      return;
+    }
+    window.location.reload();
+  };
+  document.getElementById('repoSave').addEventListener('click', submit);
+  for (const input of [pathInput, document.getElementById('repoLabel')]) {
+    input.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') submit();
+    });
+  }
+}
 state.projects = initial.projects;
 state.statuses = initial.statuses;
 state.presets = initial.presets;

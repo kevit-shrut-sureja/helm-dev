@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { tmpdir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -19,21 +19,29 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const VERSION = JSON.parse(readFileSync(join(HERE, 'package.json'), 'utf8')).version;
 
 /**
- * Locates the monorepo root, so devscope can live outside the repository it watches.
- * @returns the absolute repo root
+ * Confirms a path is an Nx workspace devscope can work with.
+ * @param candidate - the path to check
+ * @returns the absolute path, or null when it is not a workspace
  */
-function findRepoRoot() {
-  if (process.env.DEVSCOPE_REPO) return resolvePath(process.env.DEVSCOPE_REPO);
+function asWorkspace(candidate) {
+  if (!candidate) return null;
+  const absolute = resolvePath(candidate.replace(/^~(?=\/|$)/, process.env.HOME ?? '~'));
+  return existsSync(join(absolute, 'nx.json')) ? absolute : null;
+}
+
+/**
+ * Finds a workspace by walking up from the current directory, for the case where
+ * devscope is run from inside one.
+ * @returns the absolute repo root, or null
+ */
+function workspaceAboveCwd() {
   let dir = process.cwd();
   while (dir !== '/') {
     if (existsSync(join(dir, 'nx.json'))) return dir;
     dir = dirname(dir);
   }
-  throw new Error('No nx.json found. Run from inside the repo, or set DEVSCOPE_REPO.');
+  return null;
 }
-
-const REPO_ROOT = findRepoRoot();
-const CACHE_PATH = join(HERE, '.cache', 'log-sites.json');
 const PRESETS_PATH = join(HERE, '.cache', 'presets.json');
 const SESSION_PATH = join(HERE, '.cache', 'session.json');
 const SETTINGS_PATH = join(HERE, 'settings.json');
@@ -54,25 +62,65 @@ let bufferBytes = 0;
 const clients = new Set();
 let sequence = 0;
 
-const runner = new ServiceRunner(REPO_ROOT);
+await mkdir(join(HERE, '.cache'), { recursive: true });
 let settings = await loadSettings(SETTINGS_PATH);
-const watcher = new SourceWatcher(REPO_ROOT);
+let repoRoot = null;
+let repoName = null;
+let runner = null;
+let watcher = null;
 const tailer = new LogTailer(TAIL_DIR);
-const projects = await discoverProjects(REPO_ROOT);
-const projectNames = new Set(projects.map((project) => project.name));
-let index = await loadIndex(REPO_ROOT, CACHE_PATH, process.argv.includes('--reindex'));
+let projects = [];
+let projectNames = new Set();
+let index = null;
 let external = {};
 let stats = { services: {}, git: null, devscope: 0 };
+
+/**
+ * Points devscope at a workspace, building everything derived from it. Called at
+ * startup and whenever the active repository changes.
+ * @param root - absolute path to the workspace
+ * @param name - the label to show for it
+ */
+async function activateRepo(root, name) {
+  if (runner) runner.stopAll();
+  if (watcher) for (const service of Object.keys(watcher.staleness())) watcher.untrack(service);
+
+  repoRoot = root;
+  repoName = name ?? root.split('/').filter(Boolean).pop();
+  runner = new ServiceRunner(repoRoot);
+  watcher = new SourceWatcher(repoRoot);
+  projects = await discoverProjects(repoRoot);
+  projectNames = new Set(projects.map((project) => project.name));
+  index = await loadIndex(repoRoot, cachePathFor(repoRoot), process.argv.includes('--reindex'));
+  external = {};
+
+  runner.on('log', (record) => broadcast('log', record));
+  runner.on('status', (status) => broadcast('status', status));
+  watcher.on('stale', (event) => broadcast('stale', event));
+  applySettings();
+}
+
+/**
+ * Gives each workspace its own index cache, so switching does not rebuild.
+ * @param root - absolute path to the workspace
+ * @returns the cache file path for that workspace
+ */
+function cachePathFor(root) {
+  const slug = root.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return join(HERE, '.cache', `log-sites-${slug}.json`);
+}
 
 /**
  * Applies machine-level settings to the pieces that enforce them.
  */
 function applySettings() {
-  runner.setConcurrency(settings.resolvedConcurrency);
+  // The buffer budget applies with or without a workspace; the rest needs one.
   bufferBudget = Math.max(1, settings.bufferMB) * 1024 * 1024;
   while (bufferBytes > bufferBudget && buffer.length > 1) {
     bufferBytes -= buffer.shift().bytes;
   }
+  if (runner === null) return;
+  runner.setConcurrency(settings.resolvedConcurrency);
   // Angular build output is voluminous and rarely what anyone is debugging.
   for (const project of projects.filter((candidate) => candidate.kind === 'frontend')) {
     runner.setMuted(project.name, settings.muteFrontends);
@@ -123,10 +171,7 @@ function broadcast(type, payload) {
   for (const client of clients) client.write(frame);
 }
 
-runner.on('log', (record) => broadcast('log', record));
-runner.on('status', (status) => broadcast('status', status));
 tailer.on('log', (record) => broadcast('log', record));
-watcher.on('stale', (event) => broadcast('stale', event));
 
 /**
  * Looks up a project by name.
@@ -171,7 +216,7 @@ async function watchSources(name) {
  * Re-scans for services started outside devscope and reports any change.
  */
 async function refreshExternal() {
-  const found = await detectExternal(REPO_ROOT, projectNames);
+  const found = await detectExternal(repoRoot, projectNames);
   const owned = runner.statuses();
   for (const name of Object.keys(found)) {
     const mine = owned[name];
@@ -198,7 +243,7 @@ async function refreshStats() {
   }
   for (const [name, entry] of Object.entries(external)) roots[name] = entry.pid;
 
-  const [services, git] = await Promise.all([serviceMemory(roots), gitStatus(REPO_ROOT)]);
+  const [services, git] = await Promise.all([serviceMemory(roots), gitStatus(repoRoot)]);
   stats = {
     services,
     git,
@@ -212,9 +257,24 @@ async function refreshStats() {
   broadcast('stats', { stats });
 }
 
-await refreshExternal();
-await refreshStats();
+const startupRepo =
+  asWorkspace(process.env.DEVSCOPE_REPO) ??
+  asWorkspace(settings.activeRepo) ??
+  asWorkspace(settings.repos[0]?.path) ??
+  workspaceAboveCwd();
+
+if (startupRepo !== null) {
+  const known = settings.repos.find((repo) => repo.path === startupRepo);
+  if (!known) {
+    const repos = [...settings.repos, { name: startupRepo.split('/').filter(Boolean).pop(), path: startupRepo }];
+    settings = await saveSettings(SETTINGS_PATH, settings, { repos, activeRepo: startupRepo });
+  }
+  await activateRepo(startupRepo, settings.repos.find((repo) => repo.path === startupRepo)?.name);
+  await refreshExternal();
+  await refreshStats();
+}
 setInterval(() => {
+  if (repoRoot === null) return;
   refreshExternal()
     .then(() => refreshStats())
     .catch(() => undefined);
@@ -227,8 +287,8 @@ setInterval(() => {
  */
 function safeRepoPath(relativePath) {
   if (typeof relativePath !== 'string' || relativePath.length === 0) return null;
-  const absolute = resolvePath(REPO_ROOT, relativePath);
-  return absolute.startsWith(`${REPO_ROOT}/`) ? absolute : null;
+  const absolute = resolvePath(repoRoot, relativePath);
+  return absolute.startsWith(`${repoRoot}/`) ? absolute : null;
 }
 
 /**
@@ -298,20 +358,39 @@ async function serveStatic(response, name) {
 }
 
 const routes = {
+  'POST /api/repos': async (request, response) => {
+    const { path: candidate, name } = await readJsonBody(request);
+    const root = asWorkspace(candidate);
+    if (root === null) {
+      sendJson(response, 400, { error: `No nx.json found in "${candidate}" — that is not an Nx workspace.` });
+      return;
+    }
+    const repos = settings.repos.filter((repo) => repo.path !== root);
+    repos.push({ name: name?.trim() || root.split('/').filter(Boolean).pop(), path: root });
+    settings = await saveSettings(SETTINGS_PATH, settings, { repos, activeRepo: root });
+    await activateRepo(root, repos[repos.length - 1].name);
+    await refreshExternal();
+    await refreshStats();
+    sendJson(response, 200, { repos: settings.repos, active: root });
+  },
+
   'GET /api/state': async (_request, response) => {
     sendJson(response, 200, {
       projects,
-      statuses: runner.statuses(),
+      statuses: runner === null ? {} : runner.statuses(),
       presets: await readPresets(),
-      index: index.meta,
-      repoRoot: REPO_ROOT,
+      index: index === null ? { sites: 0, files: 0, tookMs: 0 } : index.meta,
+      repoRoot,
+      repoName,
+      repos: settings.repos,
+      needsRepo: repoRoot === null,
       version: VERSION,
       external,
-      queued: runner.queued(),
+      queued: runner === null ? [] : runner.queued(),
       stats,
       settings,
-      muted: runner.muted(),
-      staleness: watcher.staleness(),
+      muted: runner === null ? [] : runner.muted(),
+      staleness: watcher === null ? {} : watcher.staleness(),
       tailDir: TAIL_DIR,
       tailed: tailer.tailed(),
     });
@@ -429,7 +508,7 @@ const routes = {
   },
 
   'POST /api/reindex': async (_request, response) => {
-    index = await loadIndex(REPO_ROOT, CACHE_PATH, true);
+    index = await loadIndex(repoRoot, cachePathFor(repoRoot), true);
     sendJson(response, 200, index.meta);
   },
 
@@ -507,8 +586,14 @@ server.on('error', (error) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   process.stdout.write(`devscope v${VERSION} → http://localhost:${PORT}\n`);
-  process.stdout.write(`indexed ${index.meta.sites} log sites from ${index.meta.files} files in ${index.meta.tookMs}ms\n`);
-  process.stdout.write(`detected ${Object.keys(external).length} externally started service(s)\n`);
+  if (index === null) {
+    process.stdout.write('no workspace configured yet — open the page to point it at one\n');
+  } else {
+    process.stdout.write(
+      `${repoName}: indexed ${index.meta.sites} log sites from ${index.meta.files} files in ${index.meta.tookMs}ms\n`,
+    );
+    process.stdout.write(`detected ${Object.keys(external).length} externally started service(s)\n`);
+  }
   process.stdout.write(`tailing ${TAIL_DIR}/<service>.log · editor: ${EDITOR_CMD.split(/\s+/)[0]}\n`);
   process.stdout.write(
     `buffer ${settings.bufferMB}MB (FIFO) · starts ${settings.resolvedConcurrency} at a time` +
