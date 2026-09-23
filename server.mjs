@@ -52,6 +52,9 @@ const EDITOR_CMD = process.env.HELMDEV_EDITOR ?? 'code -g {file}:{line}';
 let bufferBudget = 50 * 1024 * 1024;
 const MAX_PAYLOAD_BYTES = 8192;
 const DETECT_INTERVAL_MS = Number(process.env.HELMDEV_DETECT_MS ?? 8000);
+// Documented as an override and used for testing eviction, so it wins over the
+// stored setting for the life of the process.
+const BUFFER_OVERRIDE_MB = Number(process.env.HELMDEV_BUFFER_MB) || null;
 
 const CONTENT_TYPES = {
   '.html': 'text/html',
@@ -108,7 +111,7 @@ function workspaceFor(repo) {
  */
 function applySettings() {
   // The buffer budget applies with or without a workspace; the rest needs one.
-  bufferBudget = Math.max(1, settings.bufferMB) * 1024 * 1024;
+  bufferBudget = Math.max(1, BUFFER_OVERRIDE_MB ?? settings.bufferMB) * 1024 * 1024;
   while (bufferBytes > bufferBudget && buffer.length > 1) {
     bufferBytes -= buffer.shift().bytes;
   }
@@ -124,21 +127,6 @@ function applySettings() {
 applySettings();
 
 /**
- * Appends a record to the ring buffer and pushes it to every connected browser.
- * @param type - the event type, log or status
- * @param payload - the event body
- */
-/**
- * Approximates a record's footprint without serialising it twice.
- * @param record - the log record
- * @returns its size in bytes
- */
-function recordBytes(record) {
-  const fields = record.fields === null || record.fields === undefined ? 0 : JSON.stringify(record.fields).length;
-  return (record.msg?.length ?? 0) + (record.context?.length ?? 0) + (record.service?.length ?? 0) + fields + 64;
-}
-
-/**
  * Caps one record's payload, so a single huge dump cannot evict the whole buffer.
  * @param record - the log record, modified in place
  */
@@ -148,21 +136,75 @@ function capPayload(record) {
   record.fields = { ...record.fields, detail: `${kept}\n… truncated, payload exceeded ${MAX_PAYLOAD_BYTES} bytes` };
 }
 
+// Dropping one record per arriving line moves the whole array every time, which
+// measured at 121ms per 1000 lines on a full buffer. Evicting down to a low-water
+// mark instead makes that one array move every few thousand lines.
+const BUFFER_LOW_WATER = 0.95;
+
+/**
+ * Brings the buffer back inside its budget, in one pass rather than per line.
+ */
+function evictOldest() {
+  if (bufferBytes <= bufferBudget) return;
+  const target = bufferBudget * BUFFER_LOW_WATER;
+  let dropped = 0;
+  let freed = 0;
+  while (dropped < buffer.length - 1 && bufferBytes - freed > target) {
+    freed += buffer[dropped].bytes;
+    dropped += 1;
+  }
+  if (dropped === 0) return;
+  buffer.splice(0, dropped);
+  bufferBytes -= freed;
+}
+
+// Log lines arrive in bursts of hundreds; a write per line is a syscall per line.
+// Status events are what the UI reacts to, so those still go out at once — and
+// take any waiting log lines with them, which keeps the order intact.
+const FLUSH_MS = 16;
+const pendingFrames = [];
+let flushTimer = null;
+
+/**
+ * Writes everything waiting to every connected browser.
+ */
+function flushFrames() {
+  if (flushTimer !== null) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  if (pendingFrames.length === 0) return;
+  const payload = pendingFrames.join('');
+  pendingFrames.length = 0;
+  for (const client of clients) client.write(payload);
+}
+
+/**
+ * Appends a record to the ring buffer and pushes it to every connected browser.
+ * @param type - the event type, log or status
+ * @param payload - the event body
+ */
 function broadcast(type, payload) {
   sequence += 1;
   const event = { type, seq: sequence, ...payload };
+  if (type === 'log') capPayload(event);
+
+  const frame = `data: ${JSON.stringify(event)}\n\n`;
   if (type === 'log') {
-    capPayload(event);
-    event.bytes = recordBytes(event);
+    // The frame is the record's real footprint, and it has just been measured by
+    // serialising it — so nothing is serialised twice to find out.
+    event.bytes = frame.length;
     buffer.push(event);
     bufferBytes += event.bytes;
-    // FIFO: drop the oldest lines until the buffer is back inside its budget.
-    while (bufferBytes > bufferBudget && buffer.length > 1) {
-      bufferBytes -= buffer.shift().bytes;
-    }
+    evictOldest();
   }
-  const frame = `data: ${JSON.stringify(event)}\n\n`;
-  for (const client of clients) client.write(frame);
+
+  pendingFrames.push(frame);
+  if (type !== 'log') {
+    flushFrames();
+    return;
+  }
+  if (flushTimer === null) flushTimer = setTimeout(flushFrames, FLUSH_MS);
 }
 
 tailer.on('log', (record) => {
@@ -244,7 +286,7 @@ async function refreshStats() {
     watches,
     buffered: buffer.length,
     bufferMB: Math.round((bufferBytes / 1048576) * 10) / 10,
-    bufferMaxMB: settings.bufferMB,
+    bufferMaxMB: BUFFER_OVERRIDE_MB ?? settings.bufferMB,
     concurrency: settings.resolvedConcurrency,
   };
   broadcast('stats', { stats });
@@ -287,15 +329,20 @@ setInterval(() => {
 }, 2000);
 
 /**
- * Rejects paths that escape the monorepo, since the UI can ask to open arbitrary files.
+ * Rejects paths that escape the monorepo, since the UI can ask to open arbitrary
+ * files. Paths arrive repo-relative, so with several workspaces open the same
+ * path resolves under every one of them: the record's own repo is tried first,
+ * and another workspace is only accepted when the file is really there.
  * @param relativePath - a repo-relative path from the client
- * @returns the absolute path, or null when it is outside the repo
+ * @param repo - the workspace the client attributed the path to
+ * @returns the absolute path, or null when it is outside every workspace
  */
-function safeRepoPath(relativePath) {
+function safeRepoPath(relativePath, repo) {
   if (typeof relativePath !== 'string' || relativePath.length === 0) return null;
-  for (const workspace of workspaces.values()) {
+  const preferred = workspaceFor(repo);
+  for (const workspace of preferred ? [preferred, ...workspaces.values()] : workspaces.values()) {
     const absolute = resolvePath(workspace.root, relativePath);
-    if (absolute.startsWith(`${workspace.root}/`)) return absolute;
+    if (absolute.startsWith(`${workspace.root}/`) && existsSync(absolute)) return absolute;
   }
   return null;
 }
@@ -555,6 +602,57 @@ const routes = {
     sendJson(response, 200, workspace.index.resolve(msg, context ?? null, { serviceRoot }));
   },
 
+  // Opening a file and reading it back are what makes a log line clickable. Both
+  // take the record's repo, because the same relative path exists in every open
+  // workspace and the wrong one would show the wrong code.
+  'POST /api/open': async (request, response) => {
+    const { repo, file, line } = await readJsonBody(request);
+    const absolute = safeRepoPath(file, repo);
+    if (absolute === null) {
+      sendJson(response, 400, { error: 'path outside repository' });
+      return;
+    }
+    const [command, ...args] = EDITOR_CMD.split(/\s+/).map((part) =>
+      part.replace('{file}', absolute).replace('{line}', String(line ?? 1)),
+    );
+    try {
+      spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
+    } catch (error) {
+      sendJson(response, 500, { error: `could not run "${command}": ${error.message}` });
+      return;
+    }
+    sendJson(response, 200, { opened: true, via: command });
+  },
+
+  'POST /api/source': async (request, response) => {
+    const { repo, file, line, radius } = await readJsonBody(request);
+    const absolute = safeRepoPath(file, repo);
+    if (absolute === null) {
+      sendJson(response, 400, { error: 'path outside repository' });
+      return;
+    }
+    const span = radius ?? 12;
+    const lines = (await readFile(absolute, 'utf8')).split('\n');
+    const from = Math.max(1, (line ?? 1) - span);
+    const to = Math.min(lines.length, (line ?? 1) + span);
+    sendJson(response, 200, { from, to, lines: lines.slice(from - 1, to) });
+  },
+
+  'POST /api/settings': async (request, response) => {
+    const changes = await readJsonBody(request);
+    settings = await saveSettings(SETTINGS_PATH, settings, changes);
+    applySettings();
+    broadcast('settings', { settings });
+    sendJson(response, 200, settings);
+  },
+
+  'POST /api/presets': async (request, response) => {
+    const presets = await readJsonBody(request);
+    await mkdir(dirname(PRESETS_PATH), { recursive: true });
+    await writeFile(PRESETS_PATH, JSON.stringify(presets, null, 2));
+    sendJson(response, 200, { saved: true });
+  },
+
   'POST /api/reindex': async (request, response) => {
     const { repo } = await readJsonBody(request);
     const targets = repo ? [workspaces.get(repo)].filter(Boolean) : [...workspaces.values()];
@@ -651,7 +749,7 @@ server.listen(PORT, '127.0.0.1', () => {
   }
   process.stdout.write(`tailing ${TAIL_DIR}/<service>.log · editor: ${EDITOR_CMD.split(/\s+/)[0]}\n`);
   process.stdout.write(
-    `buffer ${settings.bufferMB}MB (FIFO) · starts ${settings.resolvedConcurrency} at a time` +
+    `buffer ${BUFFER_OVERRIDE_MB ?? settings.bufferMB}MB (FIFO) · starts ${settings.resolvedConcurrency} at a time` +
       `${settings.startConcurrency === null ? ' (auto)' : ''} · rss ${(process.memoryUsage().rss / 1048576).toFixed(0)}MB\n`,
   );
 });
