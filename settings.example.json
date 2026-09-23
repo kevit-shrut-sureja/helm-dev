@@ -1,0 +1,5 @@
+{
+  "startConcurrency": 4,
+  "bufferMB": 50,
+  "muteFrontends": true
+}

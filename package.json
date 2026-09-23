@@ -1,0 +1,18 @@
+{
+  "name": "devscope",
+  "version": "0.2",
+  "private": true,
+  "description": "Local log console for the Chatomate monorepo: runs services, merges their logs, and resolves each line back to the source that printed it.",
+  "type": "module",
+  "main": "server.mjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "./run.sh",
+    "resume": "./run.sh --resume",
+    "reindex": "./run.sh --reindex"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}

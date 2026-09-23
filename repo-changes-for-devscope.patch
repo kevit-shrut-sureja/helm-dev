@@ -1,0 +1,300 @@
+diff --git a/apps/api-tool-proxy/.env.example b/apps/api-tool-proxy/.env.example
+index 29f5545495..aba63fa194 100644
+--- a/apps/api-tool-proxy/.env.example
++++ b/apps/api-tool-proxy/.env.example
+@@ -2,6 +2,7 @@
+ HOST=0.0.0.0
+ PORT=3001
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ NODE_ENV=development|production|staging
+ SERVER_KEEP_ALIVE_ENABLED=true
+ SERVER_KEEP_ALIVE_TIMEOUT=61000
+diff --git a/apps/bsp-api-proxy/.env.example b/apps/bsp-api-proxy/.env.example
+index 2a6ff94f6a..c1586b56df 100644
+--- a/apps/bsp-api-proxy/.env.example
++++ b/apps/bsp-api-proxy/.env.example
+@@ -2,6 +2,7 @@
+ HOST=0.0.0.0
+ PORT=4400
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ NODE_ENV=development
+ SERVER_KEEP_ALIVE_ENABLED=true
+ SERVER_KEEP_ALIVE_TIMEOUT=61000
+diff --git a/apps/data-fusion/.env.example b/apps/data-fusion/.env.example
+index cbd72d43d6..d80fe45151 100644
+--- a/apps/data-fusion/.env.example
++++ b/apps/data-fusion/.env.example
+@@ -1,6 +1,7 @@
+ NODE_ENV=development
+ ENV_FILE_PATH=
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ PRODUCT=ttl|chatomate|netcore
+ 
+diff --git a/apps/external-callbacks-processor/.env.example b/apps/external-callbacks-processor/.env.example
+index d6a6f2329e..a95f62109e 100644
+--- a/apps/external-callbacks-processor/.env.example
++++ b/apps/external-callbacks-processor/.env.example
+@@ -9,6 +9,7 @@ GRACEFUL_QUEUE_CHECK_INTERVAL=5
+ GRACEFUL_ADDITIONAL_DELAY=2
+ DB_URI=mongodb://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:27017/<YOUR_USERNAME>-chatomate-platform?authSource=admin
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ INTERCOM_CONNECTION_URL=amqp://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:5672/<YOUR_VHOST>
+ INTERCOM_HEARTBEAT_INTERVAL=5
+ REDIS_SERVERLESS_URL=redis://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:6379/<YOUR_DB_NUMBER>
+diff --git a/apps/ichnaea/.env.example b/apps/ichnaea/.env.example
+index caa7350415..2b22979759 100644
+--- a/apps/ichnaea/.env.example
++++ b/apps/ichnaea/.env.example
+@@ -1,4 +1,5 @@
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ NODE_ENV=test
+ 
+diff --git a/apps/ikit/.env.example b/apps/ikit/.env.example
+index d1155813f2..22b7aed764 100644
+--- a/apps/ikit/.env.example
++++ b/apps/ikit/.env.example
+@@ -12,6 +12,7 @@ PORT=16700
+ 
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ # DB CONFIGS
+ 
+diff --git a/apps/integrations/chatomate-crm-integration/.env.example b/apps/integrations/chatomate-crm-integration/.env.example
+index 0b080cf948..5cae404fc6 100644
+--- a/apps/integrations/chatomate-crm-integration/.env.example
++++ b/apps/integrations/chatomate-crm-integration/.env.example
+@@ -3,6 +3,7 @@ SERVER_KEEP_ALIVE_TIMEOUT=61000
+ MULTIPART_MAX_FILE_SIZE=100
+ SAAS_DB_URI=mongodb://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:27017/<YOUR_USERNAME>-chatomate-platform?authSource=admin
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ NODE_ENV=development
+ PORT=3503
+ HOST=0.0.0.0
+diff --git a/apps/jobs/archivist/.env.example b/apps/jobs/archivist/.env.example
+index 260a4e0e00..1c7c4ce21a 100644
+--- a/apps/jobs/archivist/.env.example
++++ b/apps/jobs/archivist/.env.example
+@@ -4,6 +4,7 @@ CAMPAIGN_MONGODB_STORAGE_URL=mongodb://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.
+ POSTGRES_STORAGE_URL=postgres://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:5432/<YOUR_USERNAME>_whatsapp_bsp
+ LIMIT=5
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ RCLONE_CONFIG_PATH=assets/rclone.conf
+ RCLONE_AWS_ACCESS_KEY_ID=
+ RCLONE_AWS_SECRET_ACCESS_KEY=
+diff --git a/apps/jobs/db-backup-worker/.env.example b/apps/jobs/db-backup-worker/.env.example
+index 0a9970571c..a014a13c52 100644
+--- a/apps/jobs/db-backup-worker/.env.example
++++ b/apps/jobs/db-backup-worker/.env.example
+@@ -6,6 +6,7 @@ NODE_ENV=development
+ 
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ # moment timezone
+ TIME_ZONE=Asia/Kolkata
+diff --git a/apps/jobs/excalibur/.env.example b/apps/jobs/excalibur/.env.example
+index e0bc4d4b2c..8f02036d33 100644
+--- a/apps/jobs/excalibur/.env.example
++++ b/apps/jobs/excalibur/.env.example
+@@ -13,6 +13,7 @@ RCS_JIO_PARTNER_TOKEN=
+ 
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ # DB CONFIGS
+ 
+diff --git a/apps/jobs/reporter/.env.example b/apps/jobs/reporter/.env.example
+index ef9eda5fd7..f1984476dd 100644
+--- a/apps/jobs/reporter/.env.example
++++ b/apps/jobs/reporter/.env.example
+@@ -4,6 +4,7 @@ GRACEFUL_ADDITIONAL_DELAY=2
+ DB_URI=mongodb://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:27017/<YOUR_USERNAME>-chatomate-platform?authSource=admin
+ CAMPAIGN_CDR_DB_URI=mongodb://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:27017/<YOUR_USERNAME>-chatomate-cdr?authSource=admin
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ INTERCOM_CONNECTION_URL=amqp://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:5672/<YOUR_VHOST>
+ INTERCOM_HEARTBEAT_INTERVAL=10
+ INTERCOM_REPORTER_PREFETCH=1
+diff --git a/apps/jobs/social-media-publisher/.env.example b/apps/jobs/social-media-publisher/.env.example
+index cb683f3b78..e3ce2e825b 100644
+--- a/apps/jobs/social-media-publisher/.env.example
++++ b/apps/jobs/social-media-publisher/.env.example
+@@ -7,6 +7,7 @@ INTERCOM_ADAPTER=RabbitMQ
+ INTERCOM_HEARTBEAT_INTERVAL=300
+ NODE_ENV=development
+ LOG_LEVEL=
++LOG_FORMAT=
+ META_BASE_URL=https://graph.facebook.com/v20.0
+ INSTAGRAM_CONTAINER_CREATION_RETRY_COUNT=5
+ INSTAGRAM_CONTAINER_STATUS_CHECK_INTERVAL=60 #This value will be in seconds
+diff --git a/apps/jobs/sync-bridge/.env.example b/apps/jobs/sync-bridge/.env.example
+index e6c6756d82..53bd198eb1 100644
+--- a/apps/jobs/sync-bridge/.env.example
++++ b/apps/jobs/sync-bridge/.env.example
+@@ -1,4 +1,5 @@
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ SAAS_DB_URI=mongodb://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:27017/<YOUR_USERNAME>-chatomate-platform?authSource=admin
+ 
+diff --git a/apps/moengage-integration/.env.example b/apps/moengage-integration/.env.example
+index 196efdf7f2..2223e71913 100644
+--- a/apps/moengage-integration/.env.example
++++ b/apps/moengage-integration/.env.example
+@@ -4,6 +4,7 @@ PORT=3300
+ SERVER_KEEP_ALIVE_ENABLED=true
+ SERVER_KEEP_ALIVE_TIMEOUT=61000
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ NODE_ENV=development|production|staging
+ 
+ PRODUCT=ttl|chatomate|netcore
+diff --git a/apps/platform-apis/.env.example b/apps/platform-apis/.env.example
+index f941d60e5a..e63057ab86 100644
+--- a/apps/platform-apis/.env.example
++++ b/apps/platform-apis/.env.example
+@@ -10,6 +10,7 @@ INTERCOM_ADAPTER=RabbitMQ
+ INTERCOM_HEARTBEAT_INTERVAL=300
+ NODE_ENV=development
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ HOST=0.0.0.0
+ PORT=3502
+ PRIVATE_KEY=LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpNSUlFb2dJQkFBS0NBUUVBZ3FMSk90cWVUaTlwR000Sm9WU3NnTE1lN0xIbTlaRXpDSDBwaDV0eGlVSUIxazJsClZhOExuRGVnVU9qNVhGMytZUUV5ZnRqWXlrWS9PZmIzb1ZBaTQ2VW1oOTV6dENkMUJtOXI5eEVkcUhwTlVWRHAKdCtvWWdUZWdQc3Q0a1dNQXZZZzNpTStINUI0ZHZXWlcvY2JDU3VPQ2RET0ZobEhOcXpidWl0US9NaEdlbnRUeAozc2hsR3dabkJMMHVLL2VMZGdsOHQxdEFiV2NOVGNML2plOGpsbkhpelN2RWQ0NnFsNWtoQVIraEZmMEhxVFNxCjZBOTBHajFNbGRDaE1kSXZuY2MraXN0TUFIa1FzUzYxQVNFMGRFQUtaUUFmekN3L1lUYWJrWlk5UjVuN1E5NzMKSmlHd2crL1B3K3hKMEhvWE9aOVpMRGIvNDRRZnR4djdKK2ZtS3dJREFRQUJBb0lCQUFxNjRqcHlVSVJ0Z24xbQpGd1pvVlE3eEozNGJrclBpN0VVck9xa0h6SWlRb21QKzFyQzJBd2Nlem8wMnhaeWZuOUJKNytMWlh0MG1iZlVOCjR3TWQrTytuMWdWYzhUWC84NjNHb3lDVkNGR1pVaFoyeGV1MFQ3VDFZN1VrczArRnlUN0lISCtoUkRFcGhCblYKZVJtNUpLWlFENXdKeTFMZ0R6dWI5SFgwdndnV3FsYTFJMUR5SDFsT1djOWlpaTFKK3EvUHBXcWc1YU82aWM4LwpXZmJvVlE1THFqQzRQemZXdDFKMXhhcVhlanhCZ2JCUWxEKytUVFUxVk14OEgxN1V0WWlONENseGVMQ1ZqTVdLCjdTS2thcHNjY1VyZWtSazc5cnhkcVIwRUdKN0NaVEMyVEZnMVFnU1Q1Q0M0M0U3eDR6RmRQaXo4eGxlMkp3N0wKRzVNd3hSRUNnWUVBdm16MzA1M1JCMDZCcE0vSVBMYUJQcXEzejRXY2FmZXVQZUpoRjZpTkJ2K3RkRXU3ZG91YgpScnBrNW10aEFGMlJrZS9RNGFucmNaZlJBTWxyNU9JQ2kyTDJQT1VSaTc3aVdQckM4cUhYY0FUVHZDcVVRZnpBCklHVHBFcVI2M3l0aWtFQTBPdjdrcmZSb0toMkI2N245M1hPTnhYTWNFSGdka2h5bEJuMGoyVGtDZ1lFQXI1OEkKUUZrbTZOWG0wTjMxVEFRSDY4bWpndk5WNmZuZjdKVUk2cGd2RmFuTnJxUlRKNkpWMzQxQmlmRERHejEvTXQ0TApLUTRVNzc5cHhuVDh2Q3ZhcUU2ZzJEVysrZGhoaUNhcmpIYUVjT1pjY3lwT1llN3pJeHQ3UXhTRmxIbVNCRWtzCkZuQ3ZlQ0V6b0t6SjZJa3ZDSzdLNGFpQ21CVGU0alhIUXg5RHJvTUNnWUIzalVBV0dubVdKY0tjNzFwZVM1SmUKL3AxQjZ6ZGxDL3ZYbkYycWxjWmNnMzZwaWJaYTJaRVYyWVhwWjdiUm5PejhlMXhmb09kUlBLZ1ozMXNlcW9wQQphbFAvclN6VDJIYVF1SFpXRUNlS2kyMUhNRkErRVdtcHJORHJSRnBqN0FBSVlsYW9SMGpZc1o0SCt0aUxYd3l6CjBJMU1UbFZyUFk0TEluSzAzVEg1ZVFLQmdGN1JGc3hmRmNISmtwZWI3azYvTW1PYjl0ckJjOVlpSVVLQzZGQjQKSDV1cmxLL0FhbURRcFZwUDBsMmVEa2lMdUR3SFk3RWp1Q3dFaFNBdmt6QW80U0hUYWNXeHBzMFBoUURVRi9SNwpIR0EwRHgvaWJIVTFaREhGS1pSNjVPL1hmdjB2WUUweFE1c3hHY1dhNUZ2V2pQMDhHYThob25obmREcGZYSmloCnJaSHZBb0dBVVJnZFJvYlAzS0c5YkNXajdIbFQxMkgrR2ZkWVl4WWkvZjg4RE03L1d2YU1OQzJOeGlWS3A1d2MKSTFQckJ5QU9Bdnh1dFdRZmZaUm42N2hpKzY4RjJYMU9MQ0s3WlkxS3dsN3REUEtQZ2JEM1h6alBoMXlIVmU3Lwo5QnJORmI4eUtlTDZGbGphK20rWkNkUjFrYnhkTDV3YVZBeWVKNlhQdGdkSk52Nkw5Z1U9Ci0tLS0tRU5EIFJTQSBQUklWQVRFIEtFWS0tLS0t
+diff --git a/apps/platform/.env.example b/apps/platform/.env.example
+index 398da33053..94715b655d 100644
+--- a/apps/platform/.env.example
++++ b/apps/platform/.env.example
+@@ -6,6 +6,7 @@ DB_STORAGE_URL=mongodb://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:27017
+ DB_STORAGE_NAME=BotStorage-Chatomate
+ DB_COLLECTION_NAME=UserData
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ JWT_SECRET=iBJB7PoZckgRKMyv3MRUsKrkanrMGZ6ljUjzH5FF
+ INTERNAL_BASE_URL=http://localhost:3500
+ NODE_ENV=test
+diff --git a/apps/public-apis/.env.example b/apps/public-apis/.env.example
+index 647fff4adb..ae4d41dd75 100644
+--- a/apps/public-apis/.env.example
++++ b/apps/public-apis/.env.example
+@@ -1,5 +1,6 @@
+ NODE_ENV=development
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ HOST=0.0.0.0
+ PORT=4520
+diff --git a/apps/rcs-callbacks-processor/.env.example b/apps/rcs-callbacks-processor/.env.example
+index cd5a0e68ab..ed05c90c5c 100644
+--- a/apps/rcs-callbacks-processor/.env.example
++++ b/apps/rcs-callbacks-processor/.env.example
+@@ -9,6 +9,7 @@ PORT=7778
+ 
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ ENV_FILE_PATH=
+ 
+diff --git a/apps/rcs-jio-proxy/.env.example b/apps/rcs-jio-proxy/.env.example
+index 0533e818f5..74177798f8 100644
+--- a/apps/rcs-jio-proxy/.env.example
++++ b/apps/rcs-jio-proxy/.env.example
+@@ -5,6 +5,7 @@ ENV_FILE_PATH=
+ HOST=0.0.0.0
+ PORT=4500
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ NODE_ENV=development
+ SERVER_KEEP_ALIVE_ENABLED=true
+ SERVER_KEEP_ALIVE_TIMEOUT=61000
+diff --git a/apps/socket-city/.env.example b/apps/socket-city/.env.example
+index 377ed1ab96..ee92e689e0 100644
+--- a/apps/socket-city/.env.example
++++ b/apps/socket-city/.env.example
+@@ -4,6 +4,7 @@ REDIS_URL=redis://<YOUR_USERNAME>:<YOUR_PASSWORD>@172.24.3.43:6379/<YOUR_DB_NUMB
+ 
+ # Log level
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ PRODUCT=ttl|chatomate|netcore
+ 
+diff --git a/apps/wa-callbacks-processor/.env.example b/apps/wa-callbacks-processor/.env.example
+index 50d0450485..93876db523 100644
+--- a/apps/wa-callbacks-processor/.env.example
++++ b/apps/wa-callbacks-processor/.env.example
+@@ -9,6 +9,7 @@ PORT=7777
+ 
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ ENV_FILE_PATH=
+ 
+diff --git a/apps/whatsapp/jobs/wa-analytics-worker/.env.example b/apps/whatsapp/jobs/wa-analytics-worker/.env.example
+index fd6704c4fc..2957cd5eb6 100644
+--- a/apps/whatsapp/jobs/wa-analytics-worker/.env.example
++++ b/apps/whatsapp/jobs/wa-analytics-worker/.env.example
+@@ -4,6 +4,7 @@ ENV_FILE_PATH=
+ NODE_ENV=development
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ # analytics period in days
+ ANALYTICS_PERIOD=30
+diff --git a/apps/whatsapp/jobs/wa-reporter/.env.example b/apps/whatsapp/jobs/wa-reporter/.env.example
+index 7b63992f71..7ac27dfe4f 100644
+--- a/apps/whatsapp/jobs/wa-reporter/.env.example
++++ b/apps/whatsapp/jobs/wa-reporter/.env.example
+@@ -5,6 +5,7 @@ ENV_FILE_PATH=
+ NODE_ENV=development
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ # time in minutes after which service will shutdown if no message received
+ SHUTDOWN_TIMEOUT=1
+diff --git a/apps/whatsapp/whatsapp-middleware/.env.example b/apps/whatsapp/whatsapp-middleware/.env.example
+index d3b7f8530a..f8118a51f1 100644
+--- a/apps/whatsapp/whatsapp-middleware/.env.example
++++ b/apps/whatsapp/whatsapp-middleware/.env.example
+@@ -23,6 +23,7 @@ REGISTRATION_PIN=786541
+ 
+ # default level of logs
+ LOG_LEVEL=debug
++LOG_FORMAT=
+ 
+ # Select which cloud provider this service is going to use.
+ # Possible values are 'aws', 'azure' (without quotes)
+diff --git a/libs/shared-configs/src/lib/logger.config.ts b/libs/shared-configs/src/lib/logger.config.ts
+index aa10342c3a..53e3b360dd 100644
+--- a/libs/shared-configs/src/lib/logger.config.ts
++++ b/libs/shared-configs/src/lib/logger.config.ts
+@@ -20,6 +20,12 @@ export const loggerConfig = registerAs(ENV_NAMESPACES.LOGGER, () => {
+       pinoHttp: PRODUCTION_LOGGER_CONFIGS,
+     };
+   }
++  // Dropping the pretty stream leaves pino emitting NDJSON, which local log readers parse.
++  if (process.env.LOG_FORMAT === 'json') {
++    return {
++      pinoHttp: DEVELOPMENT_LOGGER_CONFIGS,
++    };
++  }
+   return {
+     pinoHttp: [
+       DEVELOPMENT_LOGGER_CONFIGS,

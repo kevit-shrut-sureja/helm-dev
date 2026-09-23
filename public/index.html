@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>devscope</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-row">
+          <span>devscope<span class="version" id="version"></span></span>
+          <button id="helpBtn" class="mini" title="keyboard shortcuts (?)">?</button>
+          <button id="settingsBtn" class="mini" title="settings">&#9881;</button>
+          <select id="theme" title="colour theme">
+            <option value="slate">slate</option>
+            <option value="midnight">midnight</option>
+            <option value="carbon">carbon</option>
+            <option value="black">black</option>
+            <option value="amber">amber</option>
+            <option value="light">light</option>
+          </select>
+        </div>
+        <div id="repoName" class="repo"></div>
+        <div id="branchName" class="branch-line"></div>
+        <small id="indexMeta">loading index…</small>
+        <div id="statsBar" class="stats-bar"></div>
+      </div>
+
+      <div class="section-title">Presets</div>
+      <div class="presets" id="presets"></div>
+
+      <div class="section-title section-title-row">
+        <span>Services</span>
+        <button id="stopAll" class="mini" title="stop every running service">stop all</button>
+      </div>
+      <div class="services" id="services"></div>
+    </aside>
+
+    <div class="sidebar-resizer" id="sidebarResizer" title="drag to resize"></div>
+
+    <div class="main">
+      <div class="toolbar">
+        <button data-level="error" class="lvlFilter on">error</button>
+        <button data-level="warn" class="lvlFilter on">warn</button>
+        <button data-level="info" class="lvlFilter on">info</button>
+        <button data-level="debug" class="lvlFilter on">debug</button>
+        <button data-level="raw" class="lvlFilter on">raw</button>
+        <button id="noise" title="Nest bootstrap and Nx build output — 78% of a typical session">noise</button>
+        <input type="text" id="search" placeholder="filter text…  ( / )" />
+        <span id="focusChips" class="chips"></span>
+        <span class="grow"></span>
+        <span class="count" id="count"></span>
+        <button id="follow" class="on">follow</button>
+        <button id="clear" title="clear the screen — the buffer is kept">clear</button>
+        <button id="restore" title="bring cleared lines back">restore</button>
+        <button id="nextError" title="jump to next error (e)">next error &#8595;</button>
+        <button id="reindex">reindex</button>
+      </div>
+
+      <div class="split" id="split">
+        <div class="logs" id="logs">
+          <div class="logs-spacer" id="logsSpacer"><div class="logs-window" id="logsWindow"></div></div>
+        </div>
+        <div class="resizer" id="resizer" title="drag to resize"></div>
+        <div class="detail" id="detail"></div>
+      </div>
+    </div>
+
+    <div id="settingsPanel" class="settings-panel" hidden>
+      <header><strong>Settings</strong><span class="grow"></span><button id="settingsClose" class="mini">&times;</button></header>
+      <p class="settings-note">Machine settings, stored in <code>settings.json</code> next to devscope — they apply to
+        this machine, not to your browser. Theme, pane width and filters stay per-browser.</p>
+
+      <label class="setting">
+        <span>Start <strong id="concurrencyValue">1</strong> service(s) at a time</span>
+        <input type="range" id="concurrency" min="1" max="4" step="1" />
+        <small id="concurrencyHint"></small>
+      </label>
+
+      <label class="setting">
+        <span>Log buffer <strong id="bufferValue">50</strong> MB</span>
+        <input type="range" id="bufferMB" min="10" max="200" step="10" />
+        <small>Oldest lines drop once full. Applies immediately, no restart.</small>
+      </label>
+
+      <label class="setting checkbox">
+        <input type="checkbox" id="muteFrontends" />
+        <span>Mute frontend logs by default</span>
+        <small>Angular build output is large and rarely what you are debugging.</small>
+      </label>
+    </div>
+
+    <div id="helpPanel" class="settings-panel" hidden>
+      <header><strong>Keyboard shortcuts</strong><span class="grow"></span><button id="helpClose" class="mini">&times;</button></header>
+      <table class="shortcuts">
+        <tr><td><kbd>/</kbd></td><td>focus the filter box</td></tr>
+        <tr><td><kbd>e</kbd></td><td>jump to next error</td></tr>
+        <tr><td><kbd>E</kbd></td><td>jump to previous error</td></tr>
+        <tr><td><kbd>f</kbd></td><td>toggle follow</td></tr>
+        <tr><td><kbd>n</kbd></td><td>toggle build/framework noise</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>drop the trace, then close the detail pane</td></tr>
+        <tr><td><kbd>?</kbd></td><td>this list</td></tr>
+      </table>
+      <p class="settings-note">Single keys only — anything with <kbd>Ctrl</kbd>, <kbd>Cmd</kbd> or
+        <kbd>Alt</kbd> is left to the browser, so copy and find work normally. Nothing fires while you
+        have text selected. Clearing is deliberately button-only.</p>
+      <label class="setting checkbox">
+        <input type="checkbox" id="shortcutsEnabled" />
+        <span>Enable single-key shortcuts</span>
+        <small>Turn this off if you would rather type freely. Stored in this browser.</small>
+      </label>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

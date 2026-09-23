@@ -1,0 +1,7 @@
+# Built from the watched repo on first run; machine- and commit-specific.
+.cache/
+
+# Machine settings: repo paths, concurrency, buffer size.
+settings.json
+
+node_modules/
