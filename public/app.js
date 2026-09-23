@@ -25,7 +25,6 @@ const state = {
   trace: null,
   expanded: new Set(),
   collapsed: new Set(),
-  showAllIn: new Set(),
   pinned: new Set(),
   serviceFilter: '',
   levels: new Set(['error', 'warn', 'info', 'debug', 'raw']),
@@ -275,31 +274,17 @@ function serviceRowHtml(workspace, project) {
 }
 
 /**
- * Decides which services a section shows. Only a couple of the ~70 projects in
- * a workspace are ever running, so the rest are folded away until asked for.
+ * Decides which services a section shows: all of them, narrowed by the filter.
  * @param workspace - the workspace record
- * @returns the projects to render, and how many were folded away
+ * @returns the projects to render
  */
 function visibleProjects(workspace) {
   const ordered = orderedProjects(workspace);
   const filter = state.serviceFilter.trim().toLowerCase();
-
-  if (filter.length > 0) {
-    const matches = ordered.filter(
-      (project) =>
-        project.name.toLowerCase().includes(filter) || workspace.name.toLowerCase().includes(filter),
-    );
-    return { shown: matches, folded: 0 };
-  }
-
-  if (state.showAllIn.has(workspace.name)) return { shown: ordered, folded: 0 };
-
-  const shown = ordered.filter(
-    (project) =>
-      state.pinned.has(key(workspace.name, project.name)) ||
-      serviceState(workspace.name, project.name) !== 'stopped',
+  if (filter.length === 0) return ordered;
+  return ordered.filter(
+    (project) => project.name.toLowerCase().includes(filter) || workspace.name.toLowerCase().includes(filter),
   );
-  return { shown, folded: ordered.length - shown.length };
 }
 
 /**
@@ -316,21 +301,12 @@ function renderServices() {
       ['running', 'starting', 'queued', 'external', 'failed'].includes(serviceState(workspace.name, project.name)),
     ).length;
     const git = state.stats.git?.[workspace.name];
-    const { shown, folded } = visibleProjects(workspace);
-
+    const shown = visibleProjects(workspace);
     if (filtering && shown.length === 0) return '';
-
     const rows = collapsed ? '' : shown.map((project) => serviceRowHtml(workspace, project)).join('');
-    const more =
-      collapsed || folded === 0
-        ? ''
-        : `<div class="more-row" data-more="${escapeHtml(workspace.name)}">+${folded} more</div>`;
-    const less =
-      !collapsed && !filtering && state.showAllIn.has(workspace.name)
-        ? `<div class="more-row" data-more="${escapeHtml(workspace.name)}">show only what is running</div>`
-        : '';
 
-    return `<div class="repo-section ${collapsed ? 'collapsed' : ''}">
+    return `<div class="repo-section ${collapsed ? 'collapsed' : ''}" draggable="true"
+      data-repo="${escapeHtml(workspace.name)}">
       <div class="repo-head" data-repo-head="${escapeHtml(workspace.name)}" title="${escapeHtml(workspace.root)}">
         <span class="repo-caret">${collapsed ? '&#9656;' : '&#9662;'}</span>
         <span class="repo-name">${escapeHtml(workspace.name)}</span>
@@ -338,8 +314,6 @@ function renderServices() {
       </div>
       ${git ? `<div class="repo-branch" title="${escapeHtml(git.branch)}">${escapeHtml(git.branch)}</div>` : ''}
       ${rows}
-      ${more}
-      ${less}
     </div>`;
   });
 
@@ -871,15 +845,6 @@ el.services.addEventListener('click', async (event) => {
     if (state.collapsed.has(repo)) state.collapsed.delete(repo);
     else state.collapsed.add(repo);
     writePref('collapsed', [...state.collapsed]);
-    renderServices();
-    return;
-  }
-
-  const more = event.target.closest('.more-row');
-  if (more) {
-    const repo = more.dataset.more;
-    if (state.showAllIn.has(repo)) state.showAllIn.delete(repo);
-    else state.showAllIn.add(repo);
     renderServices();
     return;
   }
@@ -1566,3 +1531,89 @@ serviceFilter.addEventListener('keydown', (event) => {
 for (const repo of readPref('collapsed', [])) state.collapsed.add(repo);
 for (const id of readPref('pinned', [])) state.pinned.add(id);
 renderServices();
+
+
+/* ---------- managing workspaces ---------- */
+
+/**
+ * Lists the registered workspaces in the settings panel, each removable.
+ */
+function renderWorkspaceList() {
+  const list = document.getElementById('workspaceList');
+  list.innerHTML = state.workspaces
+    .map(
+      (workspace) => `<div class="workspace-row">
+        <span class="workspace-name">${escapeHtml(workspace.name)}</span>
+        <span class="workspace-path" title="${escapeHtml(workspace.root)}">${escapeHtml(workspace.root)}</span>
+        <button class="mini" data-remove="${escapeHtml(workspace.name)}" title="stop watching this workspace">&times;</button>
+      </div>`,
+    )
+    .join('');
+}
+
+document.getElementById('workspaceList').addEventListener('click', async (event) => {
+  const name = event.target.dataset?.remove;
+  if (!name) return;
+  if (!confirm(`Stop watching "${name}"? Its running services are stopped. The repository itself is untouched.`)) return;
+  await post('/api/repos/remove', { name });
+  window.location.reload();
+});
+
+document.getElementById('addRepo').addEventListener('click', async () => {
+  const error = document.getElementById('addRepoError');
+  const path = document.getElementById('newRepoPath').value.trim();
+  error.textContent = '';
+  if (path.length === 0) return;
+  const result = await post('/api/repos', { path, name: document.getElementById('newRepoName').value });
+  if (result.error) {
+    error.textContent = result.error;
+    return;
+  }
+  window.location.reload();
+});
+
+/* ---------- reordering workspaces by dragging ---------- */
+
+let draggedRepo = null;
+
+el.services.addEventListener('dragstart', (event) => {
+  const section = event.target.closest('.repo-section');
+  if (!section) return;
+  draggedRepo = section.dataset.repo;
+  section.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+});
+
+el.services.addEventListener('dragend', () => {
+  draggedRepo = null;
+  for (const section of el.services.querySelectorAll('.repo-section')) {
+    section.classList.remove('dragging', 'drop-target');
+  }
+});
+
+el.services.addEventListener('dragover', (event) => {
+  const section = event.target.closest('.repo-section');
+  if (!section || draggedRepo === null || section.dataset.repo === draggedRepo) return;
+  event.preventDefault();
+  for (const other of el.services.querySelectorAll('.repo-section')) other.classList.remove('drop-target');
+  section.classList.add('drop-target');
+});
+
+el.services.addEventListener('drop', async (event) => {
+  const section = event.target.closest('.repo-section');
+  if (!section || draggedRepo === null) return;
+  event.preventDefault();
+  const target = section.dataset.repo;
+  if (target === draggedRepo) return;
+
+  const order = state.workspaces.map((workspace) => workspace.name);
+  order.splice(order.indexOf(draggedRepo), 1);
+  order.splice(order.indexOf(target), 0, draggedRepo);
+
+  // Reorder locally first so the list does not jump while the server catches up.
+  state.workspaces.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+  renderServices();
+  await post('/api/repos/order', { order });
+});
+
+renderWorkspaceList();

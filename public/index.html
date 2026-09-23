@@ -90,6 +90,18 @@
         <span>Mute frontend logs by default</span>
         <small>Angular build output is large and rarely what you are debugging.</small>
       </label>
+
+      <div class="setting">
+        <span>Workspaces</span>
+        <div id="workspaceList" class="workspace-list"></div>
+        <input type="text" id="newRepoPath" placeholder="/home/you/work/another-repo" autocomplete="off" />
+        <input type="text" id="newRepoName" placeholder="name (optional)" autocomplete="off" />
+        <div class="first-run-actions">
+          <button id="addRepo" class="mini">add workspace</button>
+          <span id="addRepoError" class="first-run-error"></span>
+        </div>
+        <small>Drag a section in the sidebar to reorder them.</small>
+      </div>
     </div>
 
     <div id="helpPanel" class="settings-panel" hidden>

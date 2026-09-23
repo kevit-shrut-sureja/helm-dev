@@ -383,6 +383,33 @@ const routes = {
     sendJson(response, 200, { repos: settings.repos, added: label });
   },
 
+  'POST /api/repos/order': async (request, response) => {
+    const { order } = await readJsonBody(request);
+    if (!Array.isArray(order)) {
+      sendJson(response, 400, { error: 'order must be a list of workspace names' });
+      return;
+    }
+    const byName = new Map(settings.repos.map((repo) => [repo.name, repo]));
+    const reordered = order.map((name) => byName.get(name)).filter(Boolean);
+    for (const repo of settings.repos) if (!reordered.includes(repo)) reordered.push(repo);
+    settings = await saveSettings(SETTINGS_PATH, settings, { repos: reordered });
+    sendJson(response, 200, { repos: settings.repos });
+  },
+
+  'POST /api/repos/remove': async (request, response) => {
+    const { name } = await readJsonBody(request);
+    const workspace = workspaces.get(name);
+    if (workspace) {
+      workspace.dispose();
+      workspaces.delete(name);
+    }
+    settings = await saveSettings(SETTINGS_PATH, settings, {
+      repos: settings.repos.filter((repo) => repo.name !== name),
+    });
+    await refreshStats();
+    sendJson(response, 200, { repos: settings.repos });
+  },
+
   'GET /api/state': async (_request, response) => {
     const open = [];
     for (const [name, workspace] of workspaces) {
@@ -398,6 +425,8 @@ const routes = {
         index: workspace.index?.meta ?? { sites: 0, files: 0, tookMs: 0 },
       });
     }
+    const order = settings.repos.map((repo) => repo.name);
+    open.sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
     sendJson(response, 200, {
       workspaces: open,
       needsRepo: workspaces.size === 0,
