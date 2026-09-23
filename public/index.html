@@ -68,43 +68,49 @@
       </div>
     </div>
 
-    <div id="settingsPanel" class="settings-panel" hidden>
-      <header><strong>Settings</strong><span class="grow"></span><button id="settingsClose" class="mini">&times;</button></header>
-      <p class="settings-note">Machine settings, stored in <code>settings.json</code> next to devscope — they apply to
-        this machine, not to your browser. Theme, pane width and filters stay per-browser.</p>
+    <div id="settingsPanel" class="panel" hidden>
+      <header>
+        <strong>Settings</strong>
+        <span class="grow"></span>
+        <button id="settingsClose" class="mini">&times;</button>
+      </header>
 
-      <label class="setting">
-        <span>Start <strong id="concurrencyValue">1</strong> service(s) at a time</span>
-        <input type="range" id="concurrency" min="1" max="4" step="1" />
-        <small id="concurrencyHint"></small>
-      </label>
+      <div class="panel-body">
+        <p class="panel-note">Stored in <code>settings.json</code> next to devscope, so they apply to this
+          machine. Theme, pane widths and filters stay in your browser.</p>
 
-      <label class="setting">
-        <span>Log buffer <strong id="bufferValue">50</strong> MB</span>
-        <input type="range" id="bufferMB" min="10" max="200" step="10" />
-        <small>Oldest lines drop once full. Applies immediately, no restart.</small>
-      </label>
-
-      <label class="setting checkbox">
-        <input type="checkbox" id="muteFrontends" />
-        <span>Mute frontend logs by default</span>
-        <small>Angular build output is large and rarely what you are debugging.</small>
-      </label>
-
-      <div class="setting">
-        <span>Workspaces</span>
+        <h4>Workspaces</h4>
         <div id="workspaceList" class="workspace-list"></div>
-        <input type="text" id="newRepoPath" placeholder="/home/you/work/another-repo" autocomplete="off" />
-        <input type="text" id="newRepoName" placeholder="name (optional)" autocomplete="off" />
-        <div class="first-run-actions">
-          <button id="addRepo" class="mini">add workspace</button>
-          <span id="addRepoError" class="first-run-error"></span>
+        <div class="add-repo">
+          <input type="text" id="newRepoPath" placeholder="/path/to/another-workspace" autocomplete="off" />
+          <input type="text" id="newRepoName" placeholder="name — optional" autocomplete="off" />
+          <button id="addRepo" class="mini">add</button>
         </div>
+        <small id="addRepoError" class="panel-error"></small>
         <small>Drag a section in the sidebar to reorder them.</small>
+
+        <h4>Starting services</h4>
+        <label class="setting">
+          <span><strong id="concurrencyValue">1</strong> at a time</span>
+          <input type="range" id="concurrency" min="1" max="4" step="1" />
+          <small id="concurrencyHint"></small>
+        </label>
+
+        <h4>Logs</h4>
+        <label class="setting">
+          <span>Buffer <strong id="bufferValue">50</strong> MB</span>
+          <input type="range" id="bufferMB" min="10" max="200" step="10" />
+          <small>Oldest lines drop once full. Applies immediately.</small>
+        </label>
+        <label class="setting checkbox">
+          <input type="checkbox" id="muteFrontends" />
+          <span>Mute frontend logs by default</span>
+          <small>Angular build output is large and rarely what you are debugging.</small>
+        </label>
       </div>
     </div>
 
-    <div id="helpPanel" class="settings-panel" hidden>
+    <div id="helpPanel" class="panel" hidden>
       <header><strong>Keyboard shortcuts</strong><span class="grow"></span><button id="helpClose" class="mini">&times;</button></header>
       <table class="shortcuts">
         <tr><td><kbd>/</kbd></td><td>focus the filter box</td></tr>
@@ -115,7 +121,8 @@
         <tr><td><kbd>Esc</kbd></td><td>drop the trace, then close the detail pane</td></tr>
         <tr><td><kbd>?</kbd></td><td>this list</td></tr>
       </table>
-      <p class="settings-note">Single keys only — anything with <kbd>Ctrl</kbd>, <kbd>Cmd</kbd> or
+      <div class="panel-body">
+      <p class="panel-note">Single keys only — anything with <kbd>Ctrl</kbd>, <kbd>Cmd</kbd> or
         <kbd>Alt</kbd> is left to the browser, so copy and find work normally. Nothing fires while you
         have text selected. Clearing is deliberately button-only.</p>
       <label class="setting checkbox">
@@ -123,6 +130,7 @@
         <span>Enable single-key shortcuts</span>
         <small>Turn this off if you would rather type freely. Stored in this browser.</small>
       </label>
+      </div>
     </div>
 
     <div id="firstRun" class="first-run" hidden>

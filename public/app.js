@@ -1136,6 +1136,7 @@ if (initial.needsRepo) {
 state.workspaces = initial.workspaces ?? [];
 state.presets = initial.presets;
 state.stats = initial.stats ?? { services: {}, git: {} };
+state.home = initial.home ?? '';
 if (state.stats.bufferMaxMB) BUFFER_BUDGET_BYTES = state.stats.bufferMaxMB * 1024 * 1024;
 document.getElementById('version').textContent = initial.version ? ` v${initial.version}` : '';
 const totalSites = state.workspaces.reduce((sum, workspace) => sum + (workspace.index?.sites ?? 0), 0);
@@ -1536,6 +1537,16 @@ renderServices();
 /* ---------- managing workspaces ---------- */
 
 /**
+ * Shortens a path for display, since the home prefix is the same on every row.
+ * @param path - the absolute path
+ * @returns the path with the home directory replaced by ~
+ */
+function shortPath(path) {
+  const home = state.home ?? '';
+  return home && path.startsWith(home) ? `~${path.slice(home.length)}` : path;
+}
+
+/**
  * Lists the registered workspaces in the settings panel, each removable.
  */
 function renderWorkspaceList() {
@@ -1544,7 +1555,7 @@ function renderWorkspaceList() {
     .map(
       (workspace) => `<div class="workspace-row">
         <span class="workspace-name">${escapeHtml(workspace.name)}</span>
-        <span class="workspace-path" title="${escapeHtml(workspace.root)}">${escapeHtml(workspace.root)}</span>
+        <span class="workspace-path" title="${escapeHtml(workspace.root)}">${escapeHtml(shortPath(workspace.root))}</span>
         <button class="mini" data-remove="${escapeHtml(workspace.name)}" title="stop watching this workspace">&times;</button>
       </div>`,
     )
@@ -1617,3 +1628,34 @@ el.services.addEventListener('drop', async (event) => {
 });
 
 renderWorkspaceList();
+
+
+/* ---------- panels close when you click away ---------- */
+
+const panels = [
+  { panel: settingsPanel, button: document.getElementById('settingsBtn') },
+  { panel: helpPanel, button: document.getElementById('helpBtn') },
+];
+
+document.addEventListener('mousedown', (event) => {
+  for (const { panel, button } of panels) {
+    if (panel.hidden) continue;
+    if (panel.contains(event.target) || button.contains(event.target)) continue;
+    panel.hidden = true;
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Escape') return;
+  // Close a panel first; only then let Escape mean "drop the trace".
+  const open = panels.find(({ panel }) => !panel.hidden);
+  if (open) {
+    open.panel.hidden = true;
+    event.stopPropagation();
+  }
+}, true);
+
+// Opening one panel closes the other.
+document.getElementById('settingsBtn').addEventListener('click', () => {
+  helpPanel.hidden = true;
+});

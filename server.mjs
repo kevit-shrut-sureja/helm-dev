@@ -433,6 +433,7 @@ const routes = {
       repos: settings.repos,
       presets: await readPresets(),
       version: VERSION,
+      home: process.env.HOME ?? '',
       stats,
       settings,
       tailDir: TAIL_DIR,
