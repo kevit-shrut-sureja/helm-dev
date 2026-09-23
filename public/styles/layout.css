@@ -1,0 +1,107 @@
+/* The app frame: the three columns, the divider between them, and the scrollbars.
+
+   Order is load-bearing: rules here are overridden by later ones, so move a block
+   between files only after checking nothing else styles the same selector. */
+
+/* ---------- main ---------- */
+
+.main { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex-wrap: nowrap;
+  /* Last resort at very narrow widths: scroll the bar rather than clip it. */
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+.toolbar::-webkit-scrollbar { height: 6px; }
+.toolbar > button { flex: none; }
+.toolbar input[type='text'] { flex: 0 1 210px; min-width: 110px; }
+.toolbar .grow { flex: 1 1 auto; min-width: 4px; }
+.toolbar .count { color: var(--muted); font-size: 11px; flex: none; white-space: nowrap; }
+
+.split { display: grid; grid-template-columns: 1fr 0; overflow: hidden; }
+.split.detail-open { grid-template-columns: 1fr 480px; }
+
+.logs { overflow-y: auto; position: relative; contain: strict; }
+.logs-spacer { position: relative; width: 100%; }
+.logs-window { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
+
+.row {
+  display: flex;
+  gap: 10px;
+  padding: 0 12px;
+  height: 20px;
+  line-height: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+}
+.row .msg { overflow: hidden; text-overflow: ellipsis; }
+.row:hover { background: var(--panel); }
+.row.selected { background: var(--panel-2); border-left-color: var(--accent); }
+.row .time { color: #5c6478; flex: none; }
+.row .svc { color: var(--violet); flex: none; min-width: 120px; }
+.row .lvl { flex: none; min-width: 42px; text-transform: uppercase; font-size: 11px; }
+.row .ctx { color: var(--muted); flex: none; }
+.row .msg { flex: 1; }
+
+.lvl.error, .lvl.fatal { color: var(--red); }
+.lvl.warn { color: var(--amber); }
+.lvl.info { color: var(--green); }
+.lvl.debug, .lvl.trace { color: #6b7385; }
+.lvl.raw { color: #4d5567; }
+
+.row.error, .row.fatal { background: rgba(248, 81, 73, 0.07); }
+
+/* ---------- resizable detail pane ---------- */
+
+.split.detail-open { grid-template-columns: 1fr 5px var(--detail-width, 480px); }
+.split { grid-template-columns: 1fr 0 0; }
+
+.resizer { display: none; cursor: col-resize; background: var(--border); }
+.resizer:hover { background: var(--accent); }
+.split.detail-open .resizer { display: block; }
+
+/* ---------- scrollbars ---------- */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid transparent;
+  background-clip: content-box;
+  border-radius: 6px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+::-webkit-scrollbar-thumb:active { background: var(--accent); background-clip: content-box; }
+
+/* The snippet's horizontal bar sits inside a small box; keep it slimmer. */
+.snippet::-webkit-scrollbar { height: 8px; }
+
+.badge.foreign { color: var(--muted); border-color: var(--muted); }
+
+.row .repeat {
+  flex: none;
+  color: var(--muted);
+  background: var(--panel-2);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+  align-self: center;
+  line-height: 15px;
+}
+.chip.trace { border-color: var(--violet); color: var(--violet); background: rgba(163, 113, 247, 0.16); }

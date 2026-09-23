@@ -1,0 +1,68 @@
+/* The top bar: brand, repository, branch and the footprint readout.
+
+   Order is load-bearing: rules here are overridden by later ones, so move a block
+   between files only after checking nothing else styles the same selector. */
+
+/* ---------- header stats ---------- */
+
+/* The name takes the room, so the two buttons end up beside each other at the
+   right rather than spread across the row by space-between. */
+.brand-row { display: flex; align-items: center; gap: 4px; }
+.brand-mark { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
+.brand-row > span:first-child { min-width: 0; overflow: hidden; }
+.panel-body select {
+  font: inherit;
+  font-size: 11px;
+  color: var(--muted);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.stats-bar { margin-top: 6px; font-size: 11px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 5px; }
+.stats-bar .branch { color: var(--accent); max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats-bar .sep { opacity: 0.35; }
+
+.service .mem { font-size: 10px; color: var(--muted); flex: none; }
+.badge.temp { color: var(--amber); border-color: var(--amber); }
+.badge.constant, .badge.prefix { color: var(--violet); border-color: var(--violet); }
+.badge.definition { color: var(--muted); border-color: var(--muted); }
+
+/* ---------- repo + branch header ---------- */
+
+.repo {
+  margin-top: 8px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: var(--text);
+}
+
+.branch-line {
+  margin-top: 3px;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+.branch-line .glyph { opacity: 0.7; margin-right: 5px; font-weight: 400; }
+
+.brand small { margin-top: 6px; }
+
+/* ---------- brand ---------- */
+
+.brand-mark { display: inline-flex; align-items: center; gap: 7px; }
+.logo { width: 16px; height: 16px; color: var(--accent); flex: none; }
+
+.panel-body select {
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 4px 8px;
+}

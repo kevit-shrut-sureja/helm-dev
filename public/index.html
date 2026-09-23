@@ -4,7 +4,23 @@
     <meta charset="utf-8" />
     <title>helm-dev</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles/base.css" />
+    <link rel="stylesheet" href="/styles/layout.css" />
+    <link rel="stylesheet" href="/styles/sidebar.css" />
+    <link rel="stylesheet" href="/styles/logs.css" />
+    <link rel="stylesheet" href="/styles/detail.css" />
+    <link rel="stylesheet" href="/styles/header.css" />
+    <link rel="stylesheet" href="/styles/panels.css" />
+    <script>
+      // The theme has to be on <html> before the first paint; layout.js only gets
+      // there once the modules have loaded, which shows a frame of the default.
+      try {
+        const stored = JSON.parse(localStorage.getItem('helmdev.theme') ?? 'null');
+        if (stored) document.documentElement.dataset.theme = stored;
+      } catch {
+        // No storage in a private window: the default theme is the right answer.
+      }
+    </script>
   </head>
   <body>
     <aside class="sidebar">

@@ -1,0 +1,105 @@
+/* The pane that opens on a log line.
+
+   Order is load-bearing: rules here are overridden by later ones, so move a block
+   between files only after checking nothing else styles the same selector. */
+
+/* ---------- detail ---------- */
+
+.detail {
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  overflow-y: auto;
+  display: none;
+}
+.split.detail-open .detail { display: block; }
+
+.detail header {
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.detail header .grow { flex: 1; }
+
+.detail section { padding: 10px 12px; border-bottom: 1px solid var(--border); }
+.detail h4 { margin: 0 0 6px; font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.7px; }
+.detail pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+
+.origin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.path {
+  color: var(--accent);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.path:hover { color: var(--text); text-decoration-thickness: 2px; }
+.badge { font-size: 10px; padding: 1px 6px; border-radius: 9px; border: 1px solid var(--border); color: var(--muted); }
+.badge.exact { color: var(--green); border-color: var(--green); }
+.badge.pattern { color: var(--accent); border-color: var(--accent); }
+.badge.ambiguous { color: var(--amber); border-color: var(--amber); }
+.badge.none { color: var(--red); border-color: var(--red); }
+
+.snippet { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; overflow-x: auto; }
+.snippet div { padding: 0 8px; white-space: pre; }
+.snippet div.hit { background: rgba(90, 169, 255, 0.14); }
+.snippet .ln { color: #4d5567; display: inline-block; width: 44px; user-select: none; }
+
+/* ---------- detail pane ---------- */
+
+/* These rules were lost in a block rewrite of the settings panel; the markup
+   below kept emitting the classes, so the pane degraded to bare block flow. */
+
+.section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.section-head h4 { margin: 0; }
+/* Copy sits at the right edge, in line with the heading, so the buttons in the
+   pane form one column instead of interrupting the text they belong to. */
+.section-head .mini { margin-left: auto; }
+
+.exact-time { font-size: 13px; }
+.exact-time .iso { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
+
+.id-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.id-key { color: var(--muted); flex: none; min-width: 70px; font-size: 11px; }
+.id-val {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--accent);
+  user-select: all;
+}
+
+.candidates { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
+.candidates p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0 0 6px; }
+.candidate { margin-bottom: 4px; display: flex; gap: 8px; align-items: baseline; }
+.candidate .path { flex: 1 1 auto; min-width: 0; word-break: break-all; }
+.candidate .cand-class { color: var(--muted); font-size: 11px; }
+
+.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.section-title-row button { text-transform: none; letter-spacing: 0; }
+.section-title-row button:disabled { opacity: 0.35; cursor: default; border-color: var(--border); }
+
+.sidebar-resizer { cursor: col-resize; background: var(--border); }
+.sidebar-resizer:hover { background: var(--accent); }
+
+.workspace-list { margin-bottom: 8px; }
+.version { color: var(--muted); font-weight: 400; font-size: 11px; }
+
+kbd {
+  display: inline-block;
+  min-width: 16px;
+  padding: 1px 5px;
+  text-align: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text);
+}

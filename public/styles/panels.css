@@ -1,0 +1,146 @@
+/* Everything that floats above the app: first run, settings, help, notices.
+
+   Order is load-bearing: rules here are overridden by later ones, so move a block
+   between files only after checking nothing else styles the same selector. */
+
+/* ---------- first run ---------- */
+
+/* A class rule with `display` outranks the browser's [hidden] rule, so the
+   hidden state has to be restated here or the panel covers the app. */
+.first-run[hidden] { display: none; }
+
+.first-run {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.first-run-card {
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+.first-run-card h2 { margin: 0 0 8px; font-size: 16px; }
+.first-run-card p { color: var(--muted); line-height: 1.6; margin: 0 0 18px; }
+.first-run-card code { color: var(--accent); }
+.first-run-card label { display: block; margin-bottom: 14px; }
+.first-run-card label > span { display: block; margin-bottom: 5px; font-size: 12px; }
+.first-run-card label small { color: var(--muted); font-weight: 400; }
+.first-run-card input { width: 100%; }
+.first-run-actions { display: flex; align-items: center; gap: 10px; }
+.first-run-error { color: var(--red); font-size: 11px; line-height: 1.5; }
+
+/* ---------- first run ---------- */
+
+/* A class rule with `display` outranks the browser's [hidden] rule, so the
+   hidden state has to be restated here or the panel covers the app. */
+.first-run[hidden] { display: none; }
+
+.first-run {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+.first-run-card {
+  width: 520px;
+  max-width: calc(100vw - 40px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 22px 24px;
+}
+.first-run-card h2 { margin: 0 0 8px; font-size: 16px; }
+.first-run-card p { color: var(--muted); line-height: 1.6; margin: 0 0 18px; }
+.first-run-card code { color: var(--accent); }
+.first-run-card label { display: block; margin-bottom: 14px; }
+.first-run-card label > span { display: block; margin-bottom: 5px; font-size: 12px; }
+.first-run-card label small { color: var(--muted); font-weight: 400; }
+.first-run-card input { width: 100%; }
+.first-run-actions { display: flex; align-items: center; gap: 10px; }
+.first-run-error { color: var(--red); font-size: 11px; line-height: 1.5; }
+
+/* ---------- panels (settings, shortcuts) ---------- */
+
+.panel {
+  position: fixed;
+  top: 52px;
+  left: 14px;
+  width: 360px;
+  max-width: calc(100vw - 28px);
+  max-height: calc(100vh - 80px);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+}
+.panel[hidden] { display: none; }
+
+.panel header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.panel header .grow { flex: 1; }
+
+.panel-body { padding: 4px 14px 14px; overflow-y: auto; }
+
+.panel-body h4 {
+  margin: 16px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+}
+.panel-body h4:first-child { border-top: 0; padding-top: 0; margin-top: 12px; }
+
+.panel-note { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 12px 0 0; }
+.panel-note code { color: var(--accent); }
+.panel-error { color: var(--red); }
+
+.panel-body small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.5; margin-top: 5px; }
+
+.setting { display: block; margin-bottom: 12px; }
+.setting > span { display: block; margin-bottom: 6px; }
+.setting input[type='range'] { width: 100%; accent-color: var(--accent); }
+.setting.checkbox { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; align-items: center; }
+.setting.checkbox small { grid-column: 2; margin-top: 0; }
+
+/* ---------- stale server notice ---------- */
+
+.stale-server {
+  position: fixed;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 720px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+}
+.stale-server strong { color: var(--amber); }
+.stale-server span { color: var(--muted); }
+.stale-server code { color: var(--accent); }
