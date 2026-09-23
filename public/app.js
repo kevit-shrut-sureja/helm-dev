@@ -11,15 +11,12 @@ const FRAMEWORK_CONTEXTS = new Set([
 ]);
 
 const state = {
-  projects: [],
-  statuses: {},
+  workspaces: [],
   presets: {},
   logs: [],
-  external: {},
-  staleness: {},
+
   focus: new Set(),
-  queued: [],
-  muted: new Set(),
+
   hiddenBelow: 0,
   stats: { services: {}, git: null },
   repo: '',
@@ -68,12 +65,12 @@ async function post(path, body) {
  * @param name - the project name
  * @param options - `live` for a frontend dev server with live reload
  */
-async function startService(name, options = {}) {
-  const result = await post('/api/start', { name, ...options });
+async function startService(repo, name, options = {}) {
+  const result = await post('/api/start', { repo, name, ...options });
   if (!result.warnings) return;
   const text = result.warnings.map((warning) => `• ${warning.message}`).join('\n\n');
-  if (!confirm(`Start ${name} anyway?\n\n${text}`)) return;
-  await post('/api/start', { name, ...options, force: true });
+  if (!confirm(`Start ${name} (${repo}) anyway?\n\n${text}`)) return;
+  await post('/api/start', { repo, name, ...options, force: true });
 }
 
 /**
@@ -129,26 +126,49 @@ function formatTime(at) {
 /**
  * Renders the service list with live status dots.
  */
-function serviceState(name) {
-  const own = state.statuses[name]?.status;
+function serviceState(repo, name) {
+  const workspace = workspaceOf(repo);
+  if (!workspace) return 'stopped';
+  const own = workspace.statuses[name]?.status;
   if (['running', 'starting', 'stopping', 'failed', 'completed'].includes(own)) return own;
-  if (state.queued.includes(name)) return 'queued';
-  if (state.external[name]) return 'external';
+  if (workspace.queued.includes(name)) return 'queued';
+  if (workspace.external[name]) return 'external';
   return 'stopped';
 }
 
 /**
  * Renders the service list with live status, staleness and per-service controls.
  */
+/**
+ * The key a service is addressed by. Names repeat across repositories, so the
+ * workspace has to be part of the identity everywhere in the UI.
+ * @param repo - the workspace name
+ * @param name - the service name
+ * @returns the composite key
+ */
+function key(repo, name) {
+  return `${repo}/${name}`;
+}
+
+/**
+ * Finds a workspace by name.
+ * @param repo - the workspace name
+ * @returns the workspace record, or undefined
+ */
+function workspaceOf(repo) {
+  return state.workspaces.find((workspace) => workspace.name === repo);
+}
+
 const LIVE_ORDER = { failed: 0, running: 1, starting: 2, queued: 3, external: 4, stopping: 5, completed: 6, stopped: 7 };
 
 /**
- * Orders the list so anything alive sits at the top, then by kind, then by name.
- * @returns the projects in display order
+ * Orders one workspace's projects: anything alive first, then by kind, then name.
+ * @param workspace - the workspace record
+ * @returns its projects in display order
  */
-function orderedProjects() {
-  return [...state.projects].sort((a, b) => {
-    const rank = LIVE_ORDER[serviceState(a.name)] - LIVE_ORDER[serviceState(b.name)];
+function orderedProjects(workspace) {
+  return [...workspace.projects].sort((a, b) => {
+    const rank = LIVE_ORDER[serviceState(workspace.name, a.name)] - LIVE_ORDER[serviceState(workspace.name, b.name)];
     if (rank !== 0) return rank;
     const kinds = { app: 0, job: 1, frontend: 2, other: 3 };
     return kinds[a.kind] - kinds[b.kind] || a.name.localeCompare(b.name);
@@ -156,67 +176,116 @@ function orderedProjects() {
 }
 
 /**
+ * Lists every service currently alive, across all workspaces.
+ * @returns records of { repo, name }
+ */
+function liveServices() {
+  const live = [];
+  for (const workspace of state.workspaces) {
+    for (const project of workspace.projects) {
+      if (['running', 'starting', 'queued', 'external', 'failed'].includes(serviceState(workspace.name, project.name))) {
+        live.push({ repo: workspace.name, name: project.name });
+      }
+    }
+  }
+  return live;
+}
+
+/**
  * Enables the stop-all control only when something is actually running.
  */
 function renderStopAll() {
-  const liveCount = state.projects.filter((project) =>
-    ['running', 'starting', 'queued', 'external', 'failed'].includes(serviceState(project.name)),
-  ).length;
+  const count = liveServices().length;
   const button = document.getElementById('stopAll');
-  button.disabled = liveCount === 0;
-  button.textContent = liveCount === 0 ? 'stop all' : `stop all (${liveCount})`;
+  button.disabled = count === 0;
+  button.textContent = count === 0 ? 'stop all' : `stop all (${count})`;
 }
 
+/**
+ * Renders one service row.
+ * @param workspace - the workspace it belongs to
+ * @param project - the project record
+ * @returns the row HTML
+ */
+function serviceRowHtml(workspace, project) {
+  const repo = workspace.name;
+  const id = key(repo, project.name);
+  const status = serviceState(repo, project.name);
+  const live = ['running', 'external', 'starting', 'queued', 'failed'].includes(status);
+  const entry = workspace.statuses[project.name] ?? {};
+  const unconfirmed = status === 'running' && entry.confirmed === false;
+  const muted = workspace.muted.includes(project.name);
+  // Angular's dev server reloads itself; devscope neither watches nor restarts it.
+  const isFrontend = project.kind === 'frontend';
+  const mode = entry.mode ?? 'plain';
+  const failure = status === 'failed' ? entry.reason : null;
+  const focused = state.focus.has(id);
+  const stale = live && workspace.staleness[project.name]?.stale === true;
+  const changed = workspace.staleness[project.name]?.changed?.length ?? 0;
+  const memory = state.stats.services?.[`${repo}::${project.name}`];
+
+  const notes = [`${repo}: ${project.root}`];
+  if (status === 'external') notes.push('started outside devscope — logs only via tail file');
+  if (stale) notes.push(`${changed} file(s) changed since it started`);
+  if (status === 'starting') notes.push('still booting — logs stream as it comes up');
+  if (status === 'queued') notes.push('waiting to start — services boot a few at a time');
+  if (failure) notes.push(`did not boot: ${failure}`);
+  if (status === 'completed') notes.push('finished its work and exited cleanly — press ▶ to run it again');
+  if (isFrontend) {
+    notes.push(
+      mode === 'live'
+        ? 'live reload on: rebuilds and refreshes on change'
+        : 'started without live reload — use ▶L if you want it',
+    );
+  }
+  if (unconfirmed) notes.push('no boot signal seen — assumed up after 60s');
+  if (muted) notes.push('logs muted — click the muted badge to enable');
+  notes.push(live ? 'click to show only this service' : 'click ▶ to start');
+
+  return `<div class="service ${stale ? 'stale' : ''} ${focused ? 'focused' : ''}"
+      data-repo="${escapeHtml(repo)}" data-name="${escapeHtml(project.name)}" title="${escapeHtml(notes.join('\n'))}">
+    <span class="dot ${status}"></span>
+    <span class="name">${escapeHtml(project.name)}</span>
+    ${stale ? `<span class="badge stale-badge">${changed}&#916;</span>` : ''}
+    ${status === 'queued' ? `<span class="badge queued-badge">queued ${workspace.queued.indexOf(project.name) + 1}</span>` : ''}
+    ${status === 'failed' ? '<span class="badge failed-badge">boot failed</span>' : ''}
+    ${status === 'completed' ? `<span class="badge done-badge">done${entry.ranForMs ? ` ${formatDuration(entry.ranForMs)}` : ''}</span>` : ''}
+    ${live && mode === 'live' ? '<span class="badge live-badge" title="started with live reload">live</span>' : ''}
+    ${unconfirmed ? '<span class="badge queued-badge">unconfirmed</span>' : ''}
+    ${muted ? '<span class="badge muted-badge" data-act="unmute" title="logs are off for this service — click to turn them on">muted</span>' : ''}
+    ${memory ? `<span class="mem">${memory}M</span>` : ''}
+    <span class="actions">
+      ${live ? '<button class="mini" data-act="restart" title="stop and start again">&#10227;</button>' : ''}
+      ${live ? '<button class="mini" data-act="stop" title="stop service">&times;</button>' : '<button class="mini" data-act="start" title="start service">&#9654;</button>'}
+      ${!live && isFrontend
+        ? '<button class="mini watch-start" data-act="live" title="start with live reload — rebuilds on change, but uses far more memory">&#9654;L</button>'
+        : ''}
+    </span>
+  </div>`;
+}
+
+/**
+ * Renders every workspace as its own section, so the same service name in two
+ * repositories is never confused for one.
+ */
 function renderServices() {
   renderStopAll();
-  el.services.innerHTML = orderedProjects()
-    .map((project) => {
-      const status = serviceState(project.name);
-      const live = ['running', 'external', 'starting', 'queued', 'failed'].includes(status);
-      const ranFor = state.statuses[project.name]?.ranForMs;
-      const unconfirmed = status === 'running' && state.statuses[project.name]?.confirmed === false;
-      const muted = state.muted.has(project.name);
-      // Angular's dev server reloads itself; devscope neither watches nor restarts it.
-      const isFrontend = project.kind === 'frontend';
-      const mode = state.statuses[project.name]?.mode ?? 'plain';
-      const failure = status === 'failed' ? state.statuses[project.name]?.reason : null;
-      const focused = state.focus.has(project.name);
-      const stale = live && state.staleness[project.name]?.stale === true;
-      const changed = state.staleness[project.name]?.changed?.length ?? 0;
-      const notes = [project.root];
-      if (status === 'external') notes.push('started outside devscope — logs only via tail file');
-      if (stale) notes.push(`${changed} file(s) changed since it started`);
-      if (status === 'starting') notes.push('still booting — logs stream as it comes up');
-      if (status === 'queued') notes.push('waiting to start — services boot one at a time');
-      if (failure) notes.push(`did not boot: ${failure}`);
-      if (status === 'completed') notes.push('finished its work and exited cleanly — press ▶ to run it again');
-      if (isFrontend) {
-        notes.push(mode === 'live' ? 'live reload on: rebuilds and refreshes on change' : 'started without live reload — use ▶live if you want it');
-      }
-      if (unconfirmed) notes.push('no boot signal seen — assumed up after 60s');
-      if (muted) notes.push('logs muted — click the muted badge to enable');
-      notes.push(live ? 'click to show only this service' : 'click ▶ to start');
-      return `<div class="service ${stale ? 'stale' : ''} ${focused ? 'focused' : ''}" data-name="${project.name}" title="${escapeHtml(notes.join('\n'))}">
-        <span class="dot ${status}"></span>
-        <span class="name">${project.name}</span>
-        ${stale ? `<span class="badge stale-badge">${changed}&#916;</span>` : ''}
-        ${status === 'queued' ? `<span class="badge queued-badge">queued ${state.queued.indexOf(project.name) + 1}</span>` : ''}
-        ${status === 'failed' ? '<span class="badge failed-badge">boot failed</span>' : ''}
-        ${status === 'completed' ? `<span class="badge done-badge">done${ranFor ? ` ${formatDuration(ranFor)}` : ''}</span>` : ''}
-        ${live && mode === 'live' ? '<span class="badge live-badge" title="started with live reload — rebuilds and refreshes the browser on change">live</span>' : ''}
-        ${unconfirmed ? '<span class="badge queued-badge">unconfirmed</span>' : ''}
-        ${muted ? '<span class="badge muted-badge" data-act="unmute" title="logs are off for this service — click to turn them on">muted</span>' : ''}
-        ${state.stats.services[project.name] ? `<span class="mem">${state.stats.services[project.name]}M</span>` : ''}
-        <span class="actions">
-          ${live ? '<button class="mini" data-act="restart" title="stop and start again">&#10227;</button>' : ''}
-          ${live ? '<button class="mini" data-act="stop" title="stop service">&times;</button>' : '<button class="mini" data-act="start" title="start service">&#9654;</button>'}
-          ${!live && isFrontend
-            ? '<button class="mini watch-start" data-act="live" title="start with live reload — rebuilds on change, but uses far more memory">&#9654;L</button>'
-            : ''}
-        </span>
-      </div>`;
-    })
-    .join('');
+  const sections = state.workspaces.map((workspace) => {
+    const liveHere = workspace.projects.filter((project) =>
+      ['running', 'starting', 'queued', 'external', 'failed'].includes(serviceState(workspace.name, project.name)),
+    ).length;
+    const git = state.stats.git?.[workspace.name];
+    const rows = orderedProjects(workspace).map((project) => serviceRowHtml(workspace, project)).join('');
+    return `<div class="repo-section">
+      <div class="repo-head" data-repo-head="${escapeHtml(workspace.name)}" title="${escapeHtml(workspace.root)}">
+        <span class="repo-name">${escapeHtml(workspace.name)}</span>
+        ${git ? `<span class="repo-branch" title="current branch">${escapeHtml(git.branch)}</span>` : ''}
+        ${liveHere > 0 ? `<span class="repo-live">${liveHere} up</span>` : ''}
+      </div>
+      ${rows}
+    </div>`;
+  });
+  el.services.innerHTML = sections.join('');
 }
 
 /**
@@ -296,7 +365,7 @@ function passesFilters(record) {
   if (state.trace !== null && !correlationIds(record).some((id) => id.key === state.trace.key && id.value === state.trace.value)) {
     return false;
   }
-  if (state.focus.size > 0 && !state.focus.has(record.service)) return false;
+  if (state.focus.size > 0 && !state.focus.has(key(record.repo, record.service))) return false;
   const buckets = { fatal: 'error', error: 'error', warn: 'warn', info: 'info', debug: 'debug', trace: 'debug' };
   if (!state.levels.has(buckets[record.level] ?? 'raw')) return false;
   if (state.search.length === 0) return true;
@@ -315,7 +384,9 @@ function rowHtml(row) {
   const member = row.member ? ' member' : '';
   return `<div class="row ${record.level}${selected}${member}" data-seq="${record.seq}">
     <span class="time">${formatTime(record.at)}</span>
-    <span class="svc">${escapeHtml(record.service)}</span>
+    <span class="svc">${escapeHtml(
+      state.workspaces.length > 1 && record.repo ? `${record.repo}/${record.service}` : record.service,
+    )}</span>
     <span class="lvl ${record.level}">${record.level}</span>
     <span class="ctx">${escapeHtml(record.context ?? '')}</span>
     <span class="msg">${escapeHtml(record.msg)}</span>
@@ -467,70 +538,8 @@ function schedulePaint() {
  * Explains an empty log pane, which is almost always a service devscope did not spawn.
  * @returns the empty-state HTML
  */
-function emptyStateHtml() {
-  const focused = [...state.focus];
-  const externals = focused.filter((name) => state.external[name]);
-  const booting = focused.filter((name) => serviceState(name) === 'starting');
-  const live = focused.filter((name) => serviceState(name) === 'running');
-  const hidden = state.logs.filter((entry) => entry.seq <= state.hiddenBelow).length;
-
-  const failed = focused.filter((name) => serviceState(name) === 'failed');
-  if (failed.length > 0) {
-    const reason = state.statuses[failed[0]]?.reason;
-    return `<div class="empty">
-      <p><strong>${failed.join(', ')}</strong> did not start.</p>
-      ${reason ? `<p class="fail-reason">${escapeHtml(reason)}</p>` : ''}
-      <p>Turn on <strong>raw</strong> and <strong>noise</strong> above to see the full build output,
-      fix the cause, then press <strong>&#10227;</strong> to try again.</p>
-    </div>`;
-  }
-  const done = focused.filter((name) => serviceState(name) === 'completed');
-  if (done.length > 0 && hidden === 0) {
-    const ran = state.statuses[done[0]]?.ranForMs;
-    return `<div class="empty"><p><strong>${done.join(', ')}</strong> finished and exited cleanly${
-      ran ? ` after ${formatDuration(ran)}` : ''
-    }. Its output above is the whole run; press <strong>&#9654;</strong> to run it again.</p></div>`;
-  }
-  if (state.trace !== null) {
-    return `<div class="empty"><p>No lines carry <strong>${escapeHtml(state.trace.key)}
-      ${escapeHtml(state.trace.value)}</strong> in the buffer. Press <strong>Esc</strong> to drop the trace.</p></div>`;
-  }
-  if (hidden > 0) {
-    const who = focused.length > 0 ? ` for <strong>${focused.join(', ')}</strong>` : '';
-    return `<div class="empty"><p>Screen cleared${who}. <strong>${hidden}</strong> line(s) are still buffered —
-      press <strong>restore</strong> to bring them back. New lines appear here as they arrive.</p></div>`;
-  }
-  if (live.length > 0 && externals.length === 0 && booting.length === 0) {
-    return `<div class="empty"><p><strong>${live.join(', ')}</strong> is running and has not logged anything
-      matching the current filters yet.</p></div>`;
-  }
-
-  if (externals.length > 0) {
-    return `<div class="empty">
-      <p><strong>${externals.join(', ')}</strong> ${externals.length === 1 ? 'was' : 'were'} started outside devscope,
-      so its output goes to that terminal — devscope cannot attach to a process it did not spawn.</p>
-      <p>Two ways to get these logs here:</p>
-      <ol>
-        <li>Press <strong>&#10227;</strong> on the service to stop it and start it under devscope.</li>
-        <li>Keep your terminal and tee into the drop dir:
-          <code>npm start ${externals[0]} 2&gt;&amp;1 | tee /tmp/devscope-logs/${externals[0]}.log</code></li>
-      </ol>
-    </div>`;
-  }
-  if (booting.length > 0) {
-    return `<div class="empty"><p><strong>${booting.join(', ')}</strong> is still booting — the first lines
-      appear as soon as the build finishes.</p></div>`;
-  }
-  if (focused.length > 0) {
-    return `<div class="empty"><p>No logs yet for <strong>${focused.join(', ')}</strong>.
-      Press <strong>&#9654;</strong> to start it, or <em>show all</em> to drop the filter.</p></div>`;
-  }
-  return `<div class="empty"><p>No logs yet. Start a service with <strong>&#9654;</strong>,
-    or click a running one to focus just its output.</p></div>`;
-}
-
 /**
- * Appends a single new record without repainting the pane.
+ * Appends one newly arrived record, folding it into the last row when it repeats.
  * @param record - the log record
  */
 function appendLog(record) {
@@ -555,45 +564,77 @@ function appendLog(record) {
   schedulePaint();
 }
 
-/* ---------- detail ---------- */
+function emptyStateHtml() {
+  // Focus keys are "repo/service"; split them back out to talk about them.
+  const focused = [...state.focus].map((id) => {
+    const slash = id.indexOf('/');
+    return { repo: id.slice(0, slash), name: id.slice(slash + 1), id };
+  });
+  const stateOf = (service) => serviceState(service.repo, service.name);
+  const label = (service) => (state.workspaces.length > 1 ? `${service.repo}/${service.name}` : service.name);
+  const names = (list) => list.map(label).join(', ');
 
-/**
- * Builds the prompt handed to Claude for a selected log line.
- * @param record - the log record
- * @param origin - the resolved source location, when known
- * @returns the prompt text
- */
-function buildPrompt(record, origin) {
-  const where = origin?.match ? `${origin.match.file}:${origin.match.line}` : 'unresolved';
-  const nearby = state.logs
-    .filter((entry) => entry.service === record.service && entry.seq <= record.seq)
-    .slice(-15)
-    .map((entry) => `${entry.level}\t${entry.context ?? '-'}\t${entry.msg}`)
-    .join('\n');
+  const failed = focused.filter((service) => stateOf(service) === 'failed');
+  if (failed.length > 0) {
+    const reason = workspaceOf(failed[0].repo)?.statuses[failed[0].name]?.reason;
+    return `<div class="empty">
+      <p><strong>${escapeHtml(names(failed))}</strong> did not start.</p>
+      ${reason ? `<p class="fail-reason">${escapeHtml(reason)}</p>` : ''}
+      <p>Turn on <strong>raw</strong> and <strong>noise</strong> above to see the full build output,
+      fix the cause, then press <strong>&#10227;</strong> to try again.</p>
+    </div>`;
+  }
+  if (state.trace !== null) {
+    return `<div class="empty"><p>No lines carry <strong>${escapeHtml(state.trace.key)}
+      ${escapeHtml(state.trace.value)}</strong> in the buffer. Press <strong>Esc</strong> to drop the trace.</p></div>`;
+  }
 
-  return [
-    `While running \`${record.service}\` locally I hit this log line:`,
-    '',
-    `    [${record.level}] ${record.context ?? ''} ${record.msg}`,
-    '',
-    `It is emitted from ${where}.`,
-    record.fields ? `\nStructured payload:\n\`\`\`json\n${JSON.stringify(record.fields, null, 2)}\n\`\`\`` : '',
-    `\nThe 15 preceding lines from the same service:\n\`\`\`\n${nearby}\n\`\`\``,
-    '',
-    'What does this log mean, what code path leads here, and what could be going wrong?',
-  ].join('\n');
-}
+  const hidden = state.logs.filter((entry) => entry.seq <= state.hiddenBelow).length;
+  if (hidden > 0) {
+    const who = focused.length > 0 ? ` for <strong>${escapeHtml(names(focused))}</strong>` : '';
+    return `<div class="empty"><p>Screen cleared${who}. <strong>${hidden}</strong> line(s) are still buffered —
+      press <strong>restore</strong> to bring them back. New lines appear here as they arrive.</p></div>`;
+  }
 
-/**
- * Explains why a line has no source here, when the line did not come from this repo.
- * @param record - the log record
- * @returns a short explanation, or null when the line really should have resolved
- */
-function foreignKind(record) {
-  if (FRAMEWORK_CONTEXTS.has(record.context)) return 'Nest framework logging, emitted from node_modules';
-  if (record.level === 'raw') return 'Nx / webpack build output, not application logging';
-  if (/^\(node:\d+\)|^Warning:|KafkaJS|\[MONGOOSE\]/.test(record.msg)) return 'warning from a third-party library';
-  return null;
+  const done = focused.filter((service) => stateOf(service) === 'completed');
+  if (done.length > 0) {
+    const ran = workspaceOf(done[0].repo)?.statuses[done[0].name]?.ranForMs;
+    return `<div class="empty"><p><strong>${escapeHtml(names(done))}</strong> finished and exited cleanly${
+      ran ? ` after ${formatDuration(ran)}` : ''
+    }. Its output above is the whole run; press <strong>&#9654;</strong> to run it again.</p></div>`;
+  }
+
+  const externals = focused.filter((service) => workspaceOf(service.repo)?.external[service.name]);
+  if (externals.length > 0) {
+    return `<div class="empty">
+      <p><strong>${escapeHtml(names(externals))}</strong> ${externals.length === 1 ? 'was' : 'were'} started outside
+      devscope, so its output goes to that terminal — devscope cannot attach to a process it did not spawn.</p>
+      <p>Two ways to get these logs here:</p>
+      <ol>
+        <li>Press <strong>&#10227;</strong> on the service to stop it and start it under devscope.</li>
+        <li>Keep your terminal and tee into the drop dir:
+          <code>npm start ${escapeHtml(externals[0].name)} 2&gt;&amp;1 | tee ${escapeHtml(state.tailDir ?? '/tmp/devscope-logs')}/${escapeHtml(externals[0].name)}.log</code></li>
+      </ol>
+    </div>`;
+  }
+
+  const booting = focused.filter((service) => stateOf(service) === 'starting');
+  if (booting.length > 0) {
+    return `<div class="empty"><p><strong>${escapeHtml(names(booting))}</strong> is still booting — the first lines
+      appear as soon as the build finishes.</p></div>`;
+  }
+
+  const live = focused.filter((service) => stateOf(service) === 'running');
+  if (live.length > 0) {
+    return `<div class="empty"><p><strong>${escapeHtml(names(live))}</strong> is running and has not logged anything
+      matching the current filters yet.</p></div>`;
+  }
+  if (focused.length > 0) {
+    return `<div class="empty"><p>No logs yet for <strong>${escapeHtml(names(focused))}</strong>.
+      Press <strong>&#9654;</strong> to start it, or <em>clear all</em> to drop the filter.</p></div>`;
+  }
+  return `<div class="empty"><p>No logs yet. Start a service with <strong>&#9654;</strong>,
+    or click a running one to focus just its output.</p></div>`;
 }
 
 /**
@@ -678,7 +719,12 @@ async function showDetail(record) {
     <section id="originSection"><h4>origin</h4><div class="origin">resolving…</div></section>
     ${payloadSection(record.fields)}`;
 
-  const origin = await post('/api/resolve', { msg: record.msg, context: record.context, service: record.service });
+  const origin = await post('/api/resolve', {
+    repo: record.repo,
+    msg: record.msg,
+    context: record.context,
+    service: record.service,
+  });
   const section = document.getElementById('originSection');
   if (!section) return;
 
@@ -763,42 +809,33 @@ async function showDetail(record) {
 el.services.addEventListener('click', async (event) => {
   const node = event.target.closest('.service');
   if (!node) return;
+  const repo = node.dataset.repo;
   const name = node.dataset.name;
+  const id = key(repo, name);
   const action = event.target.dataset?.act;
 
   if (action === 'restart') {
-    if (!confirm(`Restart ${name}? The running process will be stopped first.`)) return;
-    state.staleness[name] = { stale: false, changed: [] };
+    if (!confirm(`Restart ${name} (${repo})? The running process will be stopped first.`)) return;
     renderServices();
-    await post('/api/restart', { name });
+    await post('/api/restart', { repo, name });
     return;
   }
   if (action === 'stop') {
-    await post('/api/stop', { name });
-    state.staleness[name] = { stale: false, changed: [] };
-    state.focus.delete(name);
+    await post('/api/stop', { repo, name });
+    state.focus.delete(id);
     renderServices();
     renderFocus();
     renderLogs();
     return;
   }
   if (action === 'unmute') {
-    state.muted.delete(name);
-    await post('/api/mute', { name, muted: false });
+    await post('/api/mute', { repo, name, muted: false });
     renderServices();
     return;
   }
-  if (action === 'live') {
-    state.focus.add(name);
-    await startService(name, { live: true });
-    renderServices();
-    renderFocus();
-    renderLogs();
-    return;
-  }
-  if (action === 'start') {
-    state.focus.add(name);
-    await startService(name);
+  if (action === 'live' || action === 'start') {
+    state.focus.add(id);
+    await startService(repo, name, { live: action === 'live' });
     renderServices();
     renderFocus();
     renderLogs();
@@ -806,11 +843,12 @@ el.services.addEventListener('click', async (event) => {
   }
 
   // A plain click on the row focuses that service's logs; it never stops anything.
-  if (state.focus.has(name)) state.focus.delete(name);
-  else state.focus.add(name);
+  if (state.focus.has(id)) state.focus.delete(id);
+  else state.focus.add(id);
   renderServices();
   renderFocus();
   renderLogs();
+  writePref('focus', [...state.focus]);
 });
 
 /**
@@ -821,18 +859,25 @@ function renderStats() {
   const running = Object.keys(services ?? {}).length;
   const serviceTotal = Object.values(services ?? {}).reduce((sum, mb) => sum + mb, 0);
 
-  document.getElementById('repoName').textContent = state.repo ?? '';
+  const names = state.workspaces.map((workspace) => workspace.name);
+  document.getElementById('repoName').textContent = names.join(' · ');
 
+  // With one workspace the branch belongs in the header; with several it belongs
+  // next to each section, where it already is.
   const branch = document.getElementById('branchName');
-  branch.innerHTML = git ? `<span class="glyph">&#9095;</span>${escapeHtml(git.branch)}` : '';
-  branch.title = git ? `current branch — ${git.branch}` : '';
+  const only = names.length === 1 ? git?.[names[0]] : null;
+  branch.innerHTML = only ? `<span class="glyph">&#9095;</span>${escapeHtml(only.branch)}` : '';
+  branch.title = only ? `current branch — ${only.branch}` : '';
 
   const bits = [];
-  if (git) {
-    bits.push(`<span title="modified tracked files">${git.modified} modified</span>`);
-    bits.push(`<span title="untracked files">${git.untracked} untracked</span>`);
+  if (only) {
+    bits.push(`<span title="modified tracked files">${only.modified} modified</span>`);
+    bits.push(`<span title="untracked files">${only.untracked} untracked</span>`);
   }
   if (running > 0) bits.push(`<span title="services running / their total memory">${running} up &middot; ${serviceTotal}MB</span>`);
+  if (state.stats.availableMB) {
+    bits.push(`<span title="memory available on this machine">${(state.stats.availableMB / 1000).toFixed(1)}GB free</span>`);
+  }
   if (state.stats.bufferMaxMB) {
     bits.push(
       `<span title="log buffer — oldest lines are dropped once full">buffer ${state.stats.bufferMB}/${state.stats.bufferMaxMB}MB</span>`,
@@ -890,9 +935,7 @@ document.getElementById('focusChips').addEventListener('click', (event) => {
 
 el.presets.addEventListener('click', async (event) => {
   if (event.target.id === 'savePreset') {
-    const running = Object.entries(state.statuses)
-      .filter(([, value]) => value.status === 'running')
-      .map(([name]) => name);
+    const running = liveServices();
     if (running.length === 0) return;
     const name = prompt('Preset name', 'my-setup');
     if (!name) return;
@@ -911,7 +954,11 @@ el.presets.addEventListener('click', async (event) => {
   }
   const preset = event.target.dataset.preset;
   if (preset) {
-    for (const name of state.presets[preset]) await startService(name);
+    for (const entry of state.presets[preset]) {
+      // Older presets stored bare names, from before workspaces existed.
+      const service = typeof entry === 'string' ? { repo: state.workspaces[0]?.name, name: entry } : entry;
+      await startService(service.repo, service.name);
+    }
   }
 });
 
@@ -1037,18 +1084,13 @@ if (initial.needsRepo) {
     });
   }
 }
-state.projects = initial.projects;
-state.statuses = initial.statuses;
+state.workspaces = initial.workspaces ?? [];
 state.presets = initial.presets;
-state.external = initial.external ?? {};
-state.staleness = initial.staleness ?? {};
-state.queued = initial.queued ?? [];
-state.muted = new Set(initial.muted ?? []);
-state.stats = initial.stats ?? { services: {}, git: null };
+state.stats = initial.stats ?? { services: {}, git: {} };
 if (state.stats.bufferMaxMB) BUFFER_BUDGET_BYTES = state.stats.bufferMaxMB * 1024 * 1024;
-state.repo = (initial.repoRoot ?? '').split('/').filter(Boolean).pop() ?? '';
 document.getElementById('version').textContent = initial.version ? ` v${initial.version}` : '';
-el.indexMeta.textContent = `${initial.index.sites} log sites indexed`;
+const totalSites = state.workspaces.reduce((sum, workspace) => sum + (workspace.index?.sites ?? 0), 0);
+el.indexMeta.textContent = `${totalSites} log sites indexed across ${state.workspaces.length} workspace(s)`;
 renderServices();
 renderPresets();
 renderFocus();
@@ -1063,27 +1105,32 @@ events.onmessage = (message) => {
   const event = JSON.parse(message.data);
   if (event.type === 'log') appendLog(event);
   if (event.type === 'status') {
-    if (event.status === 'queued') {
-      if (!state.queued.includes(event.service)) state.queued.push(event.service);
-    } else {
-      state.queued = state.queued.filter((name) => name !== event.service);
-      state.statuses[event.service] = {
-        status: event.status,
-        pid: event.pid ?? null,
-        confirmed: event.confirmed,
-        reason: event.reason,
-        ranForMs: event.ranForMs,
-      };
+    const workspace = workspaceOf(event.repo);
+    if (workspace) {
+      if (event.status === 'queued') {
+        if (!workspace.queued.includes(event.service)) workspace.queued.push(event.service);
+      } else {
+        workspace.queued = workspace.queued.filter((name) => name !== event.service);
+        workspace.statuses[event.service] = {
+          status: event.status,
+          pid: event.pid ?? null,
+          confirmed: event.confirmed,
+          reason: event.reason,
+          mode: event.mode ?? workspace.statuses[event.service]?.mode,
+          ranForMs: event.ranForMs,
+        };
+      }
       if (event.status === 'failed') {
-        state.focus.add(event.service);
+        state.focus.add(key(event.repo, event.service));
         renderFocus();
         renderLogs();
       }
     }
     renderServices();
+    return;
   }
   if (event.type === 'external') {
-    state.external = event.external;
+    for (const workspace of state.workspaces) workspace.external = event.workspaces[workspace.name] ?? {};
     renderServices();
   }
   if (event.type === 'settings') {
@@ -1095,7 +1142,8 @@ events.onmessage = (message) => {
     renderServices();
   }
   if (event.type === 'stale') {
-    state.staleness[event.service] = { stale: true, changed: event.changed };
+    const workspace = workspaceOf(event.repo);
+    if (workspace) workspace.staleness[event.service] = { stale: true, changed: event.changed };
     renderServices();
   }
 };
@@ -1273,7 +1321,14 @@ for (const level of readPref('hiddenLevels', [])) {
   state.levels.delete(level);
   document.querySelector(`.lvlFilter[data-level="${level}"]`)?.classList.remove('on');
 }
-for (const name of readPref('focus', [])) state.focus.add(name);
+// Focus keys became "repo/service" when workspaces arrived; anything stored in
+// the old shape can no longer match, so it is dropped rather than silently
+// filtering every line away.
+for (const id of readPref('focus', [])) {
+  if (typeof id === 'string' && id.includes('/')) state.focus.add(id);
+}
+renderFocus();
+renderLogs();
 
 for (const button of document.querySelectorAll('.lvlFilter')) {
   button.addEventListener('click', () => {
@@ -1364,14 +1419,12 @@ document.getElementById('helpClose').addEventListener('click', () => {
 
 
 document.getElementById('stopAll').addEventListener('click', async (event) => {
-  const live = state.projects
-    .map((project) => project.name)
-    .filter((name) => ['running', 'starting', 'queued', 'external', 'failed'].includes(serviceState(name)));
+  const live = liveServices();
   if (live.length === 0) return;
-  if (!confirm(`Stop ${live.length} service(s)?\n\n${live.join(', ')}`)) return;
+  const listed = live.map((service) => `${service.repo}/${service.name}`).join(', ');
+  if (!confirm(`Stop ${live.length} service(s)?\n\n${listed}`)) return;
   event.target.textContent = 'stopping…';
   await post('/api/stop-all');
-  for (const name of live) state.staleness[name] = { stale: false, changed: [] };
   renderServices();
 });
 

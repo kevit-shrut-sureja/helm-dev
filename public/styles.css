@@ -521,6 +521,10 @@ button.watch-start { font-size: 10px; }
 
 /* ---------- first run ---------- */
 
+/* A class rule with `display` outranks the browser's [hidden] rule, so the
+   hidden state has to be restated here or the panel covers the app. */
+.first-run[hidden] { display: none; }
+
 .first-run {
   position: fixed;
   inset: 0;
@@ -547,3 +551,32 @@ button.watch-start { font-size: 10px; }
 .first-run-card input { width: 100%; }
 .first-run-actions { display: flex; align-items: center; gap: 10px; }
 .first-run-error { color: var(--red); font-size: 11px; line-height: 1.5; }
+
+/* ---------- workspace sections ---------- */
+
+.repo-section + .repo-section { margin-top: 6px; }
+.repo-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+.repo-section:first-child .repo-head { border-top: 0; }
+.repo-head .repo-name { color: var(--text); font-weight: 700; }
+.repo-head .repo-branch {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--accent);
+  text-transform: none;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-head .repo-live { margin-left: auto; color: var(--green); white-space: nowrap; flex: none; }
+.repo-head .repo-name { flex: none; }

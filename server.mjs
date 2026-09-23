@@ -5,11 +5,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { tmpdir, userInfo } from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { discoverProjects } from './lib/projects.mjs';
-import { detectExternal, killExternal } from './lib/detect.mjs';
-import { loadIndex } from './lib/log-index.mjs';
-import { ServiceRunner } from './lib/runner.mjs';
-import { SourceWatcher } from './lib/watcher.mjs';
+import { killExternal } from './lib/detect.mjs';
+import { Workspace } from './lib/workspace.mjs';
 import { gitStatus, serviceMemory } from './lib/stats.mjs';
 import { availableMemoryMB, preflight } from './lib/preflight.mjs';
 import { LogTailer } from './lib/tailer.mjs';
@@ -65,50 +62,40 @@ let sequence = 0;
 
 await mkdir(join(HERE, '.cache'), { recursive: true });
 let settings = await loadSettings(SETTINGS_PATH);
-let repoRoot = null;
-let repoName = null;
-let runner = null;
-let watcher = null;
+const workspaces = new Map();
 const tailer = new LogTailer(TAIL_DIR);
-let projects = [];
-let projectNames = new Set();
-let index = null;
-let external = {};
 let stats = { services: {}, git: null, devscope: 0 };
 
 /**
- * Points devscope at a workspace, building everything derived from it. Called at
- * startup and whenever the active repository changes.
- * @param root - absolute path to the workspace
- * @param name - the label to show for it
+ * Adds a workspace and starts watching it. Several can be open at once: a
+ * developer may be working in one repository while running a single service
+ * from another.
+ * @param name - the label for this workspace
+ * @param root - absolute path to it
+ * @returns the workspace
  */
-async function activateRepo(root, name) {
-  if (runner) runner.stopAll();
-  if (watcher) for (const service of Object.keys(watcher.staleness())) watcher.untrack(service);
+async function addWorkspace(name, root) {
+  const existing = workspaces.get(name);
+  if (existing) return existing;
 
-  repoRoot = root;
-  repoName = name ?? root.split('/').filter(Boolean).pop();
-  runner = new ServiceRunner(repoRoot);
-  watcher = new SourceWatcher(repoRoot);
-  projects = await discoverProjects(repoRoot);
-  projectNames = new Set(projects.map((project) => project.name));
-  index = await loadIndex(repoRoot, cachePathFor(repoRoot), process.argv.includes('--reindex'));
-  external = {};
-
-  runner.on('log', (record) => broadcast('log', record));
-  runner.on('status', (status) => broadcast('status', status));
-  watcher.on('stale', (event) => broadcast('stale', event));
+  const workspace = new Workspace(name, root, join(HERE, '.cache'));
+  await workspace.init({ reindex: process.argv.includes('--reindex') });
+  workspace.on('log', (record) => broadcast('log', record));
+  workspace.on('status', (status) => broadcast('status', status));
+  workspace.on('stale', (event) => broadcast('stale', event));
+  workspaces.set(name, workspace);
   applySettings();
+  return workspace;
 }
 
 /**
- * Gives each workspace its own index cache, so switching does not rebuild.
- * @param root - absolute path to the workspace
- * @returns the cache file path for that workspace
+ * Resolves the workspace a request is talking about.
+ * @param repo - the workspace name, or undefined when only one is open
+ * @returns the workspace, or null
  */
-function cachePathFor(root) {
-  const slug = root.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '');
-  return join(HERE, '.cache', `log-sites-${slug}.json`);
+function workspaceFor(repo) {
+  if (repo) return workspaces.get(repo) ?? null;
+  return workspaces.size === 1 ? [...workspaces.values()][0] : null;
 }
 
 /**
@@ -120,11 +107,12 @@ function applySettings() {
   while (bufferBytes > bufferBudget && buffer.length > 1) {
     bufferBytes -= buffer.shift().bytes;
   }
-  if (runner === null) return;
-  runner.setConcurrency(settings.resolvedConcurrency);
-  // Angular build output is voluminous and rarely what anyone is debugging.
-  for (const project of projects.filter((candidate) => candidate.kind === 'frontend')) {
-    runner.setMuted(project.name, settings.muteFrontends);
+  for (const workspace of workspaces.values()) {
+    workspace.runner.setConcurrency(settings.resolvedConcurrency);
+    // Angular build output is voluminous and rarely what anyone is debugging.
+    for (const project of workspace.projects.filter((candidate) => candidate.kind === 'frontend')) {
+      workspace.runner.setMuted(project.name, settings.muteFrontends);
+    }
   }
 }
 
@@ -172,111 +160,116 @@ function broadcast(type, payload) {
   for (const client of clients) client.write(frame);
 }
 
-tailer.on('log', (record) => broadcast('log', record));
+tailer.on('log', (record) => {
+  // A tailed file is named after the service, not the workspace. Attribute it
+  // when exactly one open workspace has a project by that name.
+  const owners = [...workspaces.values()].filter((workspace) => workspace.projectNames.has(record.service));
+  broadcast('log', owners.length === 1 ? { ...record, repo: owners[0].name } : record);
+});
 
 /**
- * Looks up a project by name.
+ * Starts a service in its workspace, choosing the flags its stack needs.
+ * @param workspace - the workspace it belongs to
  * @param name - the project name
- * @returns the project, or undefined when unknown
- */
-function projectByName(name) {
-  return projects.find((project) => project.name === name);
-}
-
-/**
- * Starts a service the one way devscope knows how, so the API, a restart and a
- * resume all apply the same rules.
- * @param name - the project name
- * @param options - `live` for a frontend dev server that reloads, `watch` for a
- *   backend devscope restarts itself
+ * @param options - `live` for a frontend dev server with live reload
  * @returns whether it was queued
  */
-function startService(name, options = {}) {
+function startService(workspace, name, options = {}) {
   // Only an Angular dev server can reload itself, and doing so costs gigabytes,
   // so a plain start switches watching and reloading off explicitly. Backends
   // are always started plain — they have no equivalent.
-  const isFrontend = projectByName(name)?.kind === 'frontend';
-  const live = isFrontend && options.live === true;
-  const args = isFrontend && !live ? ['--watch=false', '--liveReload=false'] : [];
-  return runner.enqueue(name, { args, mode: live ? 'live' : 'plain', kind: projectByName(name)?.kind ?? 'app' });
+  const kind = workspace.project(name)?.kind ?? 'app';
+  const live = kind === 'frontend' && options.live === true;
+  const args = kind === 'frontend' && !live ? ['--watch=false', '--liveReload=false'] : [];
+  return workspace.runner.enqueue(name, { args, mode: live ? 'live' : 'plain', kind });
 }
 
 /**
- * Begins watching a service's sources so later edits mark it stale.
- * @param name - the project name
- */
-async function watchSources(name) {
-  const project = projectByName(name);
-  // Angular's dev server watches and rebuilds by itself, so tracking its sources
-  // would only produce a stale badge for something that is never stale.
-  if (!project?.sourceRoot || project.kind === 'frontend') return;
-  await watcher.track(name, project.sourceRoot);
-}
-
-/**
- * Re-scans for services started outside devscope and reports any change.
+ * Re-scans every workspace for services started outside devscope.
  */
 async function refreshExternal() {
-  const found = await detectExternal(repoRoot, projectNames);
-  const owned = runner.statuses();
-  for (const name of Object.keys(found)) {
-    const mine = owned[name];
-    // Anything devscope still holds a process for is not "external", whatever
-    // state that process is in — a failed start can leave the wrapper alive.
-    if (mine && (mine.status !== 'stopped' || mine.pid === found[name].pid)) delete found[name];
-  }
-  if (JSON.stringify(found) !== JSON.stringify(external)) {
-    for (const name of Object.keys(found)) {
-      if (!(name in external)) await watchSources(name);
+  let changed = false;
+  for (const workspace of workspaces.values()) {
+    const before = new Set(Object.keys(workspace.external));
+    if (await workspace.refreshExternal()) {
+      changed = true;
+      for (const name of Object.keys(workspace.external)) {
+        if (!before.has(name)) await workspace.watchSources(name);
+      }
     }
-    external = found;
-    broadcast('external', { external });
   }
+  if (changed) broadcast('external', { workspaces: externalByWorkspace() });
 }
 
 /**
- * Recomputes per-service memory and the repository's git state.
+ * Collects the externally started services of every workspace.
+ * @returns a map of workspace name to its external services
+ */
+function externalByWorkspace() {
+  const out = {};
+  for (const [name, workspace] of workspaces) out[name] = workspace.external;
+  return out;
+}
+
+/**
+ * Recomputes per-service memory and each workspace's git state.
  */
 async function refreshStats() {
   const roots = {};
-  for (const [name, entry] of Object.entries(runner.statuses())) {
-    if (entry.pid !== null && entry.status !== 'stopped') roots[name] = entry.pid;
+  for (const [repo, workspace] of workspaces) {
+    for (const [name, entry] of Object.entries(workspace.runner.statuses())) {
+      if (entry.pid !== null && entry.status !== 'stopped') roots[`${repo}::${name}`] = entry.pid;
+    }
+    for (const [name, entry] of Object.entries(workspace.external)) roots[`${repo}::${name}`] = entry.pid;
   }
-  for (const [name, entry] of Object.entries(external)) roots[name] = entry.pid;
 
-  const [services, git] = await Promise.all([serviceMemory(roots), gitStatus(repoRoot)]);
+  const services = await serviceMemory(roots);
+  const git = {};
+  let watches = 0;
+  for (const [repo, workspace] of workspaces) {
+    git[repo] = await gitStatus(workspace.root);
+    watches += workspace.watcher.watchCount();
+  }
+
   stats = {
     services,
     git,
     devscope: Math.round(process.memoryUsage().rss / 1048576),
     availableMB: await availableMemoryMB(),
-    watches: watcher.watchCount(),
+    watches,
     buffered: buffer.length,
     bufferMB: Math.round((bufferBytes / 1048576) * 10) / 10,
     bufferMaxMB: settings.bufferMB,
-    concurrency: runner.concurrency(),
+    concurrency: settings.resolvedConcurrency,
   };
   broadcast('stats', { stats });
 }
 
-const startupRepo =
-  asWorkspace(process.env.DEVSCOPE_REPO) ??
-  asWorkspace(settings.activeRepo) ??
-  asWorkspace(settings.repos[0]?.path) ??
-  workspaceAboveCwd();
+// Open every registered workspace. A developer may be working in one repository
+// and running a single service from another at the same time.
+const registered = [...settings.repos];
+const fromEnv = asWorkspace(process.env.DEVSCOPE_REPO) ?? workspaceAboveCwd();
+if (fromEnv !== null && !registered.some((repo) => repo.path === fromEnv)) {
+  registered.push({ name: fromEnv.split('/').filter(Boolean).pop(), path: fromEnv });
+  settings = await saveSettings(SETTINGS_PATH, settings, { repos: registered });
+}
 
-if (startupRepo !== null) {
-  const known = settings.repos.find((repo) => repo.path === startupRepo);
-  if (!known) {
-    const repos = [...settings.repos, { name: startupRepo.split('/').filter(Boolean).pop(), path: startupRepo }];
-    settings = await saveSettings(SETTINGS_PATH, settings, { repos, activeRepo: startupRepo });
+for (const repo of registered) {
+  const root = asWorkspace(repo.path);
+  if (root === null) {
+    process.stderr.write(`skipping "${repo.name}": ${repo.path} is no longer an Nx workspace\n`);
+    continue;
   }
-  await activateRepo(startupRepo, settings.repos.find((repo) => repo.path === startupRepo)?.name);
+  await addWorkspace(repo.name, root);
+}
+
+if (workspaces.size > 0) {
   await refreshExternal();
   await refreshStats();
 }
+
 setInterval(() => {
-  if (repoRoot === null) return;
+  if (workspaces.size === 0) return;
   refreshExternal()
     .then(() => refreshStats())
     .catch(() => undefined);
@@ -289,8 +282,11 @@ setInterval(() => {
  */
 function safeRepoPath(relativePath) {
   if (typeof relativePath !== 'string' || relativePath.length === 0) return null;
-  const absolute = resolvePath(repoRoot, relativePath);
-  return absolute.startsWith(`${repoRoot}/`) ? absolute : null;
+  for (const workspace of workspaces.values()) {
+    const absolute = resolvePath(workspace.root, relativePath);
+    if (absolute.startsWith(`${workspace.root}/`)) return absolute;
+  }
+  return null;
 }
 
 /**
@@ -367,164 +363,163 @@ const routes = {
       sendJson(response, 400, { error: `No nx.json found in "${candidate}" — that is not an Nx workspace.` });
       return;
     }
+    const label = name?.trim() || root.split('/').filter(Boolean).pop();
+    if (workspaces.has(label) && workspaces.get(label).root !== root) {
+      sendJson(response, 400, { error: `A workspace named "${label}" is already open. Give this one another name.` });
+      return;
+    }
     const repos = settings.repos.filter((repo) => repo.path !== root);
-    repos.push({ name: name?.trim() || root.split('/').filter(Boolean).pop(), path: root });
-    settings = await saveSettings(SETTINGS_PATH, settings, { repos, activeRepo: root });
-    await activateRepo(root, repos[repos.length - 1].name);
+    repos.push({ name: label, path: root });
+    settings = await saveSettings(SETTINGS_PATH, settings, { repos });
+    await addWorkspace(label, root);
     await refreshExternal();
     await refreshStats();
-    sendJson(response, 200, { repos: settings.repos, active: root });
+    sendJson(response, 200, { repos: settings.repos, added: label });
   },
 
   'GET /api/state': async (_request, response) => {
+    const open = [];
+    for (const [name, workspace] of workspaces) {
+      open.push({
+        name,
+        root: workspace.root,
+        projects: workspace.projects,
+        statuses: workspace.runner.statuses(),
+        queued: workspace.runner.queued(),
+        muted: workspace.runner.muted(),
+        staleness: workspace.watcher.staleness(),
+        external: workspace.external,
+        index: workspace.index?.meta ?? { sites: 0, files: 0, tookMs: 0 },
+      });
+    }
     sendJson(response, 200, {
-      projects,
-      statuses: runner === null ? {} : runner.statuses(),
-      presets: await readPresets(),
-      index: index === null ? { sites: 0, files: 0, tookMs: 0 } : index.meta,
-      repoRoot,
-      repoName,
+      workspaces: open,
+      needsRepo: workspaces.size === 0,
       repos: settings.repos,
-      needsRepo: repoRoot === null,
+      presets: await readPresets(),
       version: VERSION,
-      external,
-      queued: runner === null ? [] : runner.queued(),
       stats,
       settings,
-      muted: runner === null ? [] : runner.muted(),
-      staleness: watcher === null ? {} : watcher.staleness(),
       tailDir: TAIL_DIR,
       tailed: tailer.tailed(),
     });
   },
 
   'POST /api/start': async (request, response) => {
-    const { name, live, force } = await readJsonBody(request);
-    const project = projectByName(name);
+    const { repo, name, live, force } = await readJsonBody(request);
+    const workspace = workspaceFor(repo);
+    const project = workspace?.project(name);
     if (!project) {
-      sendJson(response, 404, { error: `unknown service "${name}"` });
+      sendJson(response, 404, { error: `unknown service "${name}" in "${repo ?? 'the open workspace'}"` });
       return;
     }
     if (force !== true) {
-      const booting = Object.values(runner.statuses()).filter((entry) => entry.status === 'starting').length;
-      const warnings = await preflight(repoRoot, project, booting);
+      // Count everything booting anywhere: the machine does not care which
+      // repository a webpack build belongs to.
+      let booting = 0;
+      for (const other of workspaces.values()) {
+        booting += Object.values(other.runner.statuses()).filter((entry) => entry.status === 'starting').length;
+      }
+      const warnings = await preflight(workspace.root, project, booting);
       if (warnings.length > 0) {
         sendJson(response, 409, { warnings });
         return;
       }
     }
-    const queued = startService(name, { live });
-    if (queued) await watchSources(name);
-    sendJson(response, 200, { queued, position: runner.queued().indexOf(name) + 1 });
-  },
-
-  'POST /api/settings': async (request, response) => {
-    const changes = await readJsonBody(request);
-    settings = await saveSettings(SETTINGS_PATH, settings, changes);
-    applySettings();
-    broadcast('settings', { settings });
-    sendJson(response, 200, settings);
-  },
-
-  'POST /api/stop-all': async (_request, response) => {
-    const stopped = runner.stopAll();
-    for (const name of stopped) watcher.untrack(name);
-    for (const name of Object.keys(external)) {
-      await killExternal(external[name].pid);
-      stopped.push(name);
-    }
-    external = {};
-    broadcast('external', { external });
-    sendJson(response, 200, { stopped });
-  },
-
-  'POST /api/mute': async (request, response) => {
-    const { name, muted } = await readJsonBody(request);
-    runner.setMuted(name, muted === true);
-    sendJson(response, 200, { muted: runner.muted() });
+    const queued = startService(workspace, name, { live });
+    if (queued) await workspace.watchSources(name);
+    sendJson(response, 200, { queued, position: workspace.runner.queued().indexOf(name) + 1 });
   },
 
   'POST /api/stop': async (request, response) => {
-    const { name } = await readJsonBody(request);
-    if (external[name]) {
-      const killed = await killExternal(external[name].pid);
-      delete external[name];
-      watcher.untrack(name);
-      broadcast('external', { external });
+    const { repo, name } = await readJsonBody(request);
+    const workspace = workspaceFor(repo);
+    if (!workspace) {
+      sendJson(response, 404, { error: 'unknown workspace' });
+      return;
+    }
+    if (workspace.external[name]) {
+      const killed = await killExternal(workspace.external[name].pid);
+      delete workspace.external[name];
+      workspace.watcher.untrack(name);
+      broadcast('external', { workspaces: externalByWorkspace() });
       sendJson(response, 200, { stopped: killed, wasExternal: true });
       return;
     }
-    const stopped = runner.stop(name);
-    if (stopped) watcher.untrack(name);
+    const stopped = workspace.runner.stop(name);
+    if (stopped) workspace.watcher.untrack(name);
     sendJson(response, 200, { stopped });
   },
 
   'POST /api/restart': async (request, response) => {
-    const { name } = await readJsonBody(request);
-    if (external[name]) {
-      await killExternal(external[name].pid);
-      delete external[name];
-      broadcast('external', { external });
-    } else {
-      runner.stop(name);
+    const { repo, name } = await readJsonBody(request);
+    const workspace = workspaceFor(repo);
+    if (!workspace) {
+      sendJson(response, 404, { error: 'unknown workspace' });
+      return;
     }
-    const previous = runner.statuses()[name]?.mode;
+    if (workspace.external[name]) {
+      await killExternal(workspace.external[name].pid);
+      delete workspace.external[name];
+      broadcast('external', { workspaces: externalByWorkspace() });
+    } else {
+      workspace.runner.stop(name);
+    }
+    const previous = workspace.runner.statuses()[name]?.mode;
     setTimeout(async () => {
-      startService(name, { live: previous === 'live' });
-      await watchSources(name);
+      startService(workspace, name, { live: previous === 'live' });
+      await workspace.watchSources(name);
     }, 2000);
     sendJson(response, 200, { restarting: true });
   },
 
+  'POST /api/stop-all': async (request, response) => {
+    const { repo } = await readJsonBody(request);
+    const targets = repo ? [workspaces.get(repo)].filter(Boolean) : [...workspaces.values()];
+    const stopped = [];
+    for (const workspace of targets) {
+      for (const name of workspace.runner.stopAll()) {
+        workspace.watcher.untrack(name);
+        stopped.push(`${workspace.name}/${name}`);
+      }
+      for (const name of Object.keys(workspace.external)) {
+        await killExternal(workspace.external[name].pid);
+        stopped.push(`${workspace.name}/${name}`);
+      }
+      workspace.external = {};
+    }
+    broadcast('external', { workspaces: externalByWorkspace() });
+    sendJson(response, 200, { stopped });
+  },
+
+  'POST /api/mute': async (request, response) => {
+    const { repo, name, muted } = await readJsonBody(request);
+    const workspace = workspaceFor(repo);
+    if (!workspace) {
+      sendJson(response, 404, { error: 'unknown workspace' });
+      return;
+    }
+    workspace.runner.setMuted(name, muted === true);
+    sendJson(response, 200, { muted: workspace.runner.muted() });
+  },
+
   'POST /api/resolve': async (request, response) => {
-    const { msg, context, service } = await readJsonBody(request);
-    const serviceRoot = service ? projectByName(service)?.root : undefined;
-    sendJson(response, 200, index.resolve(msg, context ?? null, { serviceRoot }));
-  },
-
-  'POST /api/open': async (request, response) => {
-    const { file, line } = await readJsonBody(request);
-    const absolute = safeRepoPath(file);
-    if (absolute === null) {
-      sendJson(response, 400, { error: 'path outside repository' });
+    const { repo, msg, context, service } = await readJsonBody(request);
+    const workspace = workspaceFor(repo);
+    if (!workspace?.index) {
+      sendJson(response, 200, { match: null, confidence: 'none', candidates: [] });
       return;
     }
-    const [command, ...args] = EDITOR_CMD.split(/\s+/).map((part) =>
-      part.replace('{file}', absolute).replace('{line}', String(line ?? 1)),
-    );
-    try {
-      spawn(command, args, { detached: true, stdio: 'ignore' }).unref();
-    } catch (error) {
-      sendJson(response, 500, { error: `could not run "${command}": ${error.message}` });
-      return;
-    }
-    sendJson(response, 200, { opened: true, via: command });
+    const serviceRoot = service ? workspace.project(service)?.root : undefined;
+    sendJson(response, 200, workspace.index.resolve(msg, context ?? null, { serviceRoot }));
   },
 
-  'POST /api/source': async (request, response) => {
-    const { file, line, radius } = await readJsonBody(request);
-    const absolute = safeRepoPath(file);
-    if (absolute === null) {
-      sendJson(response, 400, { error: 'path outside repository' });
-      return;
-    }
-    const span = radius ?? 12;
-    const text = await readFile(absolute, 'utf8');
-    const lines = text.split('\n');
-    const from = Math.max(1, (line ?? 1) - span);
-    const to = Math.min(lines.length, (line ?? 1) + span);
-    sendJson(response, 200, { from, to, lines: lines.slice(from - 1, to) });
-  },
-
-  'POST /api/presets': async (request, response) => {
-    const presets = await readJsonBody(request);
-    await writeFile(PRESETS_PATH, JSON.stringify(presets, null, 2));
-    sendJson(response, 200, { saved: true });
-  },
-
-  'POST /api/reindex': async (_request, response) => {
-    index = await loadIndex(repoRoot, cachePathFor(repoRoot), true);
-    sendJson(response, 200, index.meta);
+  'POST /api/reindex': async (request, response) => {
+    const { repo } = await readJsonBody(request);
+    const targets = repo ? [workspaces.get(repo)].filter(Boolean) : [...workspaces.values()];
+    const meta = {};
+    for (const workspace of targets) meta[workspace.name] = await workspace.reindex();
+    sendJson(response, 200, meta);
   },
 
   'POST /api/clear': async (_request, response) => {
@@ -579,8 +574,10 @@ if (process.argv.includes('--resume')) {
     for (const entry of session.services ?? []) {
       const name = typeof entry === 'string' ? entry : entry.name;
       const mode = typeof entry === 'string' ? 'plain' : entry.mode;
-      startService(name, { live: mode === 'live' });
-      await watchSources(name);
+      const workspace = workspaceFor(typeof entry === 'string' ? undefined : entry.repo);
+      if (!workspace?.project(name)) continue;
+      startService(workspace, name, { live: mode === 'live' });
+      await workspace.watchSources(name);
     }
     process.stdout.write(`resuming ${session.services?.length ?? 0} service(s) from the last session\n`);
   } catch {
@@ -601,13 +598,15 @@ server.on('error', (error) => {
 
 server.listen(PORT, '127.0.0.1', () => {
   process.stdout.write(`devscope v${VERSION} → http://localhost:${PORT}\n`);
-  if (index === null) {
+  if (workspaces.size === 0) {
     process.stdout.write('no workspace configured yet — open the page to point it at one\n');
   } else {
-    process.stdout.write(
-      `${repoName}: indexed ${index.meta.sites} log sites from ${index.meta.files} files in ${index.meta.tookMs}ms\n`,
-    );
-    process.stdout.write(`detected ${Object.keys(external).length} externally started service(s)\n`);
+    for (const workspace of workspaces.values()) {
+      process.stdout.write(
+        `${workspace.name}: ${workspace.projects.length} projects, ${workspace.index.meta.sites} log sites` +
+          `, ${Object.keys(workspace.external).length} started elsewhere\n`,
+      );
+    }
   }
   process.stdout.write(`tailing ${TAIL_DIR}/<service>.log · editor: ${EDITOR_CMD.split(/\s+/)[0]}\n`);
   process.stdout.write(
@@ -632,11 +631,16 @@ function shutdown(signal) {
   }
   shuttingDown = true;
 
-  const before = runner.statuses();
-  const stopped = runner.stopAll();
-  if (stopped.length > 0) {
+  const services = [];
+  for (const workspace of workspaces.values()) {
+    const before = workspace.runner.statuses();
+    for (const name of workspace.dispose()) {
+      services.push({ repo: workspace.name, name, mode: before[name]?.mode ?? 'plain' });
+    }
+  }
+  const stopped = services.map((entry) => `${entry.repo}/${entry.name}`);
+  if (services.length > 0) {
     try {
-      const services = stopped.map((name) => ({ name, mode: before[name]?.mode ?? 'plain' }));
       writeFileSync(SESSION_PATH, JSON.stringify({ stoppedAt: new Date().toISOString(), services }));
     } catch {
       // Losing the session note is not worth failing the shutdown over.
@@ -646,7 +650,10 @@ function shutdown(signal) {
 
   const deadline = Date.now() + 6000;
   const waitForExit = setInterval(() => {
-    const alive = Object.values(runner.statuses()).filter((entry) => entry.status !== 'stopped').length;
+    let alive = 0;
+    for (const workspace of workspaces.values()) {
+      alive += Object.values(workspace.runner.statuses()).filter((entry) => entry.status !== 'stopped').length;
+    }
     if (alive === 0 || Date.now() > deadline) {
       clearInterval(waitForExit);
       if (alive > 0) process.stdout.write(`${alive} service(s) did not exit in time; they were signalled\n`);
