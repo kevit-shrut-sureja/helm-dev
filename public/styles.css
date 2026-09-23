@@ -604,9 +604,11 @@ button.watch-start { font-size: 10px; }
 }
 
 .service.pinned .name { color: var(--text); }
-button.mini.pin { color: #3a3f4d; font-size: 9px; }
-button.mini.pin:hover { color: var(--accent); }
+/* A star, not a dot: a filled dot here reads as another status light. */
+button.mini.pin { color: var(--muted); font-size: 11px; line-height: 15px; }
+button.mini.pin:hover { color: var(--amber); border-color: var(--amber); }
 button.mini.pin.on { color: var(--amber); background: transparent; border-color: transparent; }
+button.mini.pin.on:hover { border-color: var(--amber); }
 .service .actions { display: none; gap: 3px; flex: none; }
 .service:hover .actions, .service.stale .actions, .service.pinned .actions { display: flex; }
 

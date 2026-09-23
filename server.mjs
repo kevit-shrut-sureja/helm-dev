@@ -275,6 +275,12 @@ setInterval(() => {
     .catch(() => undefined);
 }, DETECT_INTERVAL_MS);
 
+// Booting is checked far more often than the rest: a service that is up but
+// still labelled "starting" is the difference between waiting and working.
+setInterval(() => {
+  for (const workspace of workspaces.values()) workspace.confirmBooting().catch(() => undefined);
+}, 2000);
+
 /**
  * Rejects paths that escape the monorepo, since the UI can ask to open arbitrary files.
  * @param relativePath - a repo-relative path from the client

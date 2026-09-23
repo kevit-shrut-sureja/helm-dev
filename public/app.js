@@ -263,7 +263,8 @@ function serviceRowHtml(workspace, project) {
     ${memory ? `<span class="mem">${memory}M</span>` : ''}
     <span class="actions">
       <button class="mini pin ${state.pinned.has(id) ? 'on' : ''}" data-act="pin"
-        title="${state.pinned.has(id) ? 'unpin — stop keeping it at the top' : 'pin — keep it at the top of this workspace'}">&#9679;</button>
+        title="${state.pinned.has(id) ? 'unpin — stop keeping it at the top' : 'pin — keep it at the top of this workspace'}"
+        >${state.pinned.has(id) ? '&#9733;' : '&#9734;'}</button>
       ${live ? '<button class="mini" data-act="restart" title="stop and start again">&#10227;</button>' : ''}
       ${live ? '<button class="mini" data-act="stop" title="stop service">&times;</button>' : '<button class="mini" data-act="start" title="start service">&#9654;</button>'}
       ${!live && isFrontend
