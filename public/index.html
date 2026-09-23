@@ -16,9 +16,10 @@
       // there once the modules have loaded, which shows a frame of the default.
       try {
         const stored = JSON.parse(localStorage.getItem('helmdev.theme') ?? 'null');
-        if (stored) document.documentElement.dataset.theme = stored;
+        document.documentElement.dataset.theme = stored ?? 'black';
       } catch {
-        // No storage in a private window: the default theme is the right answer.
+        // No storage in a private window: black is still the right default.
+        document.documentElement.dataset.theme = 'black';
       }
     </script>
   </head>

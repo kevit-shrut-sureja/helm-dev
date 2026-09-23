@@ -17,7 +17,7 @@ function applyTheme(name) {
   writePref('theme', name);
 }
 
-applyTheme(storedTheme ?? 'slate');
+applyTheme(storedTheme ?? 'black');
 themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
 
 const storedWidth = readPref('detailWidth', 0);
