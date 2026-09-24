@@ -112,6 +112,16 @@ defers them, so the DOM is ready when any of them runs.
 - **Stylesheet order is load-bearing.** `index.html` lists them in cascade order and
   a few selectors are deliberately restated later. Moving a block between files can
   change what wins without changing a single declaration.
+- **`LogSiteIndex.resolve()` memoizes, capped at 2000 entries.** An exact-match
+  message resolves in under a microsecond regardless — the index is a Map lookup.
+  A message that falls through to pattern matching costs ~130µs, measured against
+  chatomate's real index (1429 patterns, 206 prefixes, full linear scan on a miss).
+  Cheap for one click; wasteful for the same recurring error clicked into twice,
+  which is the normal shape of debugging with this tool. The cache is capped
+  because messages carrying dynamic values (an order id, a request id) mint a
+  distinct key each time — unbounded would grow with the session. It needs no
+  invalidation: `reindex()` always builds a new `LogSiteIndex` instance rather
+  than mutating the old one, so a stale cache cannot outlive the index it caches.
 
 ## Testing changes
 
