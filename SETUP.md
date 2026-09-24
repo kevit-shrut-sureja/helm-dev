@@ -95,11 +95,15 @@ as given:
 HELMDEV_EDITOR='webstorm --line {line} {file}' ./helm-dev   # JetBrains WebStorm
 HELMDEV_EDITOR='idea --line {line} {file}' ./helm-dev       # IntelliJ / PhpStorm / PyCharm
 HELMDEV_EDITOR='subl {file}:{line}' ./helm-dev              # Sublime Text
+HELMDEV_EDITOR='zed {file}:{line}' ./helm-dev                # Zed
 ```
 
 For JetBrains IDEs the launcher comes from **Toolbox → the IDE → Settings → Generate
 shell scripts**, or **Tools → Create Command-line Launcher** in the IDE itself. Test it
 with `webstorm --line 1 /etc/hostname` before relying on it.
+
+Zed's `zed` binary is usually on PATH once installed; if `zed --version` says command
+not found, add `~/.local/bin` to your PATH (some Linux packages name it `zeditor`).
 
 ## 6. If something looks wrong
 

@@ -83,6 +83,9 @@ HELMDEV_EDITOR='idea --line {line} {file}' ./helm-dev
 # Sublime Text
 HELMDEV_EDITOR='subl {file}:{line}' ./helm-dev
 
+# Zed
+HELMDEV_EDITOR='zed {file}:{line}' ./helm-dev
+
 # VS Code (the default)
 HELMDEV_EDITOR='code -g {file}:{line}' ./helm-dev
 ```
@@ -93,6 +96,13 @@ the IDE. Check it works before relying on it:
 
 ```bash
 webstorm --line 1 /etc/hostname     # should open that file in the running IDE
+```
+
+Zed's CLI is usually on PATH once it's installed, but not always — check first:
+
+```bash
+zed --version   # command not found? add ~/.local/bin to PATH, or the binary may
+                # be named zeditor on some Linux packages — check your install
 ```
 
 To keep it, put the variable in your shell profile instead of typing it each time:
