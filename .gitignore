@@ -5,3 +5,7 @@
 settings.json
 
 node_modules/
+
+# Never intended here — helm-dev has no dependencies and reads no dotenv file,
+# so nothing should ever write one. Ignored defensively in case something does.
+.env

@@ -661,9 +661,13 @@ const routes = {
     sendJson(response, 200, meta);
   },
 
+  // Frees the buffer, server and every connected tab. Distinct from the "clear
+  // screen" button on the page, which only moves a watermark and keeps the data —
+  // this one actually releases the memory, and cannot be undone.
   'POST /api/clear': async (_request, response) => {
     buffer.length = 0;
     bufferBytes = 0;
+    broadcast('cleared', {});
     sendJson(response, 200, { cleared: true });
   },
 };

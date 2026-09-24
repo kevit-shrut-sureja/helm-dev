@@ -73,5 +73,9 @@
 .service .dot.queued { background: #3a3f4d; border: 1px solid var(--muted); }
 #restore { display: none; }
 
+/* Red only on hover — a genuinely destructive action should look ordinary until
+   you reach for it, not sit in the toolbar shouting the whole time. */
+button.danger:hover { color: var(--red); border-color: var(--red); }
+
 .service .dot.failed { background: var(--red); }
 .badge.failed-badge { color: var(--red); border-color: var(--red); }

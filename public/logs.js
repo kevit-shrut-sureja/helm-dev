@@ -1,6 +1,6 @@
 // The log pane. Only the rows in view exist as DOM; the rest is arithmetic.
 
-import { el, escapeHtml, formatDuration, formatTime, state, workspaceOf, writePref } from './core.js';
+import { el, escapeHtml, formatDuration, formatTime, post, state, workspaceOf, writePref } from './core.js';
 import { showDetail } from './detail.js';
 import { passesFilters } from './filters.js';
 import { serviceState } from './services.js';
@@ -218,6 +218,21 @@ function evictOldest() {
   state.bytes -= freed;
 }
 
+/**
+ * Empties the buffer entirely — server and this tab's own copy — as opposed to
+ * "clear", which only moves the watermark and keeps every line reachable via
+ * restore. There is nothing to restore after this.
+ */
+export function purgeLogs() {
+  state.logs = [];
+  state.bytes = 0;
+  state.hiddenBelow = 0;
+  state.selected = null;
+  el.split.classList.remove('detail-open');
+  renderLogs();
+  renderRestore();
+}
+
 export function appendLog(record) {
   state.logs.push(record);
   state.bytes += record.bytes ?? 256;
@@ -341,6 +356,16 @@ document.getElementById('follow').addEventListener('click', (event) => {
   writePref('follow', state.follow);
   event.target.classList.toggle('on');
   if (state.follow) jumpToLatest();
+});
+
+document.getElementById('purge').addEventListener('click', async () => {
+  const count = state.logs.length;
+  if (count === 0) return;
+  if (!confirm(`Permanently free ${count.toLocaleString()} buffered log line(s)? This cannot be undone.`)) return;
+  await post('/api/clear', {});
+  // The server's broadcast does the actual reset, once it round-trips back over
+  // SSE — which keeps this tab and any other open one in exact agreement rather
+  // than each guessing the outcome locally.
 });
 
 document.getElementById('clear').addEventListener('click', () => {

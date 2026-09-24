@@ -3,7 +3,7 @@
 
 import { el, key, post, readPref, state, workspaceOf } from './core.js';
 import { applyNoise, noiseButton, renderFocus } from './filters.js';
-import { appendLog, jumpToError, renderLogs, renderRestore, setBufferBudget } from './logs.js';
+import { appendLog, jumpToError, purgeLogs, renderLogs, renderRestore, setBufferBudget } from './logs.js';
 import { helpPanel, renderSettings, shortcutsOn } from './panels.js';
 import { renderIndexMeta, renderPresets, renderServices, renderStats } from './services.js';
 import { renderWorkspaceList } from './workspaces.js';
