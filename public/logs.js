@@ -153,6 +153,9 @@ export function renderLogs(options = {}) {
 function writeMetrics(viewport) {
   el.spacer.style.height = `${visibleRecords.length * ROW_HEIGHT}px`;
   el.count.textContent = `${visibleRecords.length} shown / ${state.logs.length} buffered`;
+  // A button that stays clickable when there is nothing behind it can silently
+  // do nothing on click, which reads as broken rather than as "already empty".
+  document.getElementById('purge').disabled = state.logs.length === 0;
   // Computed rather than read back as scrollHeight: reading the layout straight
   // after writing to it forces a synchronous reflow, and this used to run once
   // per arriving log line rather than once per frame.
@@ -358,14 +361,24 @@ document.getElementById('follow').addEventListener('click', (event) => {
   if (state.follow) jumpToLatest();
 });
 
-document.getElementById('purge').addEventListener('click', async () => {
+document.getElementById('purge').addEventListener('click', async (event) => {
   const count = state.logs.length;
   if (count === 0) return;
   if (!confirm(`Permanently free ${count.toLocaleString()} buffered log line(s)? This cannot be undone.`)) return;
+  const button = event.target;
+  const label = button.textContent;
+  button.disabled = true;
+  button.textContent = 'clearing…';
   await post('/api/clear', {});
   // The server's broadcast does the actual reset, once it round-trips back over
   // SSE — which keeps this tab and any other open one in exact agreement rather
-  // than each guessing the outcome locally.
+  // than each guessing the outcome locally. If the round trip is slow or the
+  // connection drops, purge locally rather than leave the button stuck.
+  if (state.logs.length > 0) purgeLogs();
+  button.textContent = 'cleared ✓';
+  setTimeout(() => {
+    button.textContent = label;
+  }, 1200);
 });
 
 document.getElementById('clear').addEventListener('click', () => {

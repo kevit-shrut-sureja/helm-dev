@@ -76,6 +76,9 @@
 /* Red only on hover — a genuinely destructive action should look ordinary until
    you reach for it, not sit in the toolbar shouting the whole time. */
 button.danger:hover { color: var(--red); border-color: var(--red); }
+/* Disabled when the buffer is already empty, so a click either does something
+   real or the button visibly cannot be clicked — never a silent no-op. */
+button.danger:disabled { opacity: 0.35; cursor: default; color: var(--muted); border-color: var(--border); }
 
 .service .dot.failed { background: var(--red); }
 .badge.failed-badge { color: var(--red); border-color: var(--red); }
