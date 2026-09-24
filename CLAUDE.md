@@ -93,6 +93,33 @@ defers them, so the DOM is ready when any of them runs.
   asked for. Angular's watcher costs gigabytes.
 - **Nx keeps a failed or finished task alive.** A job that completes is detected from
   Nx's own `Process exited with code N` line, not from the child exiting.
+- **That exit line is trusted for an app too, but only while it is still `starting`.**
+  Nx prints the same line on every watch-mode restart of an already-healthy app,
+  which is normal and must not be read as a failure — but during the very first
+  boot there is no such thing as a normal restart, so an app dying there is exactly
+  as much a failure as a job dying is. Before this, an app that crashed on every
+  attempt (a missing env var, say) sat at `starting` forever: the exit line was
+  ignored for anything but a job, and the boot-failure regex only matches three
+  literal phrases (`ExceptionHandler`, `Failed tasks`, `Nest application failed to
+  start`), which most crash messages do not contain.
+- **`stop()` escalates to SIGKILL after a 6s grace period.** SIGTERM is a request;
+  nothing here ever verified it was honoured. A hung event loop, a connection
+  nothing drained, or simply no shutdown hook left a service showing "stopping"
+  forever, with no way to know it was stuck short of checking `ps` yourself. The
+  escalation tracks `entry.stoppedByUs` as an explicit flag set the moment `stop()`
+  signals — not inferred from `entry.status === 'stopping'`, because the forced
+  kill has to advance that status to `stopped` before the OS confirms the process
+  is actually gone, and the real `exit` handler runs after that. Checking the
+  status string there found `stopped`, not `stopping`, and mistook its own forced
+  kill for an unprompted crash, misreporting a clean forced stop as `failed`.
+- **A service's source watch is released by its status, not by whoever stopped it.**
+  `Workspace` untracks the moment the runner reports `failed`, `completed` or
+  `stopped` — not only when the explicit stop routes run. A service that crashes
+  on its own, and especially a completed job (`stop()` refuses to act on one at
+  all — there is nothing left to signal), used to leave its watch open
+  indefinitely. Restarting a flaky service a few times in one session leaked one
+  watch per attempt; `untrack()` is a no-op if already released, so this fires
+  safely alongside the explicit-stop path rather than instead of it.
 - **The page's modules import each other in cycles** — `logs` ↔ `detail`,
   `logs` ↔ `filters`. Every one of those references is inside a function that runs
   after boot, which ES modules handle; splitting them further to break the cycle
