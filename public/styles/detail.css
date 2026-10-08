@@ -83,6 +83,7 @@
 .section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .section-title-row button { text-transform: none; letter-spacing: 0; }
 .section-title-row button:disabled { opacity: 0.35; cursor: default; border-color: var(--border); }
+.section-actions { display: flex; gap: 6px; }
 
 .sidebar-resizer { cursor: col-resize; background: var(--border); }
 .sidebar-resizer:hover { background: var(--accent); }

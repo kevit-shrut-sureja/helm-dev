@@ -4,13 +4,15 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { tmpdir, userInfo } from 'node:os';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 import { killExternal } from './lib/detect.mjs';
 import { Workspace } from './lib/workspace.mjs';
 import { gitStatus, serviceMemory } from './lib/stats.mjs';
-import { availableMemoryMB, preflight } from './lib/preflight.mjs';
+import { availableMemoryMB, portsInUse, preflight } from './lib/preflight.mjs';
 import { LogTailer } from './lib/tailer.mjs';
 import { loadSettings, saveSettings } from './lib/settings.mjs';
+import { CATEGORIES, buildMetadata, reportTarget, submitReport, validateReport } from './lib/report.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // package.json is the single source of the version; the UI and the banner read it.
@@ -42,7 +44,8 @@ function workspaceAboveCwd() {
 }
 const PRESETS_PATH = join(HERE, '.cache', 'presets.json');
 const SESSION_PATH = join(HERE, '.cache', 'session.json');
-const SETTINGS_PATH = join(HERE, 'settings.json');
+// Overridable so a test can run a throwaway instance without touching real settings.
+const SETTINGS_PATH = process.env.HELMDEV_SETTINGS ?? join(HERE, 'settings.json');
 const PORT = Number(process.env.HELMDEV_PORT ?? 7788);
 // Whatever the OS calls its temp directory, and per-user so two people on one
 // box do not tail each other's files.
@@ -215,6 +218,45 @@ tailer.on('log', (record) => {
 });
 
 /**
+ * Answers a log query from the buffer, newest first, stopping as soon as enough
+ * has matched. The page asks with only a limit; the command line adds filters so
+ * a caller never has to pull the whole buffer to look for one service's errors.
+ * @param params - limit, repo, service, level (comma list), grep, since (epoch ms), after (a seq)
+ * @returns the matching records, oldest first
+ */
+function queryLogs(params) {
+  const limit = Math.min(Number(params.get('limit')) || 2000, 20000);
+  const repo = params.get('repo');
+  const service = params.get('service');
+  const grep = params.get('grep')?.toLowerCase() || null;
+  const since = Number(params.get('since')) || 0;
+  const after = Number(params.get('after')) || 0;
+  const levels = params.get('level')?.split(',').filter(Boolean);
+  const wanted = levels
+    ? new Set(levels.flatMap((level) => (level === 'error' ? ['error', 'fatal'] : level === 'debug' ? ['debug', 'trace'] : [level])))
+    : null;
+
+  const hits = [];
+  for (let at = buffer.length - 1; at >= 0 && hits.length < limit; at -= 1) {
+    const record = buffer[at];
+    // Sequence numbers only rise, so nothing older than `after` can follow.
+    if (record.seq <= after) break;
+    if (repo && record.repo !== repo) continue;
+    if (service && record.service !== service) continue;
+    if (wanted && !wanted.has(record.level)) continue;
+    // A line carries the time its service printed, which is not always the
+    // order it arrived in, so an old one skips rather than ends the search.
+    if (since && record.at < since) continue;
+    if (grep) {
+      const text = `${record.service} ${record.context ?? ''} ${record.msg}`.toLowerCase();
+      if (!text.includes(grep) && !(record.fields && JSON.stringify(record.fields).toLowerCase().includes(grep))) continue;
+    }
+    hits.push(record);
+  }
+  return hits.reverse();
+}
+
+/**
  * Starts a service in its workspace, choosing the flags its stack needs.
  * @param workspace - the workspace it belongs to
  * @param name - the project name
@@ -350,11 +392,17 @@ function safeRepoPath(relativePath, repo) {
 /**
  * Reads the request body and parses it as JSON.
  * @param request - the incoming request
+ * @param limit - the most bytes to accept; routes that take small bodies leave it unset
  * @returns the parsed body, or an empty object
  */
-async function readJsonBody(request) {
+async function readJsonBody(request, limit = Infinity) {
   const chunks = [];
-  for await (const chunk of request) chunks.push(chunk);
+  let received = 0;
+  for await (const chunk of request) {
+    received += chunk.length;
+    if (received > limit) throw Object.assign(new Error('That is too large to send.'), { status: 413 });
+    chunks.push(chunk);
+  }
   if (chunks.length === 0) return {};
   try {
     return JSON.parse(Buffer.concat(chunks).toString());
@@ -411,6 +459,74 @@ async function serveStatic(response, name) {
   } catch {
     sendJson(response, 404, { error: 'not found' });
   }
+}
+
+/**
+ * Waits for a service's ports to be released, so the next start does not collide
+ * with a process that is still tearing down.
+ * @param ports - the ports it was last seen on
+ * @param limitMs - the longest to wait before going ahead anyway
+ */
+async function waitForPorts(ports, limitMs = 5000) {
+  const until = Date.now() + limitMs;
+  while (Date.now() < until && Object.keys(await portsInUse(ports)).length > 0) await sleep(250);
+}
+
+/**
+ * Stops a service, waits until it has genuinely gone, then starts it again with
+ * the mode it had. A fixed delay between the two started a second process while
+ * the first was still dying, and preflight then reported its port as taken.
+ * @param workspace - the workspace it belongs to
+ * @param name - the project name
+ */
+async function restartService(workspace, name) {
+  const previous = workspace.runner.statuses()[name]?.mode;
+  const ports = workspace.knownPorts.get(name) ?? [];
+  if (workspace.external[name]) {
+    await killExternal(workspace.external[name].pid);
+    delete workspace.external[name];
+    broadcast('external', { workspaces: externalByWorkspace() });
+  } else {
+    workspace.runner.stop(name);
+    workspace.watcher.untrack(name);
+    await workspace.runner.settled(name);
+  }
+  await waitForPorts(ports);
+  startService(workspace, name, { live: previous === 'live' });
+  await workspace.watchSources(name);
+}
+
+const REPORT_LIMIT_BYTES = 40 * 1024 * 1024;
+
+/**
+ * Tells a request from this page apart from one made by some other site's page.
+ * @param request - the incoming request
+ * @returns true when there is no Origin header (a script) or it names this server
+ */
+function sameOrigin(request) {
+  const origin = request.headers.origin;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === request.headers.host;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Collects the live state a bug report describes.
+ * @param form - what the page sent: the category and its own view of the filters
+ * @returns the context {@link buildMetadata} reads
+ */
+function reportContext(form) {
+  return {
+    version: VERSION,
+    workspaces: [...workspaces.values()],
+    stats,
+    settings,
+    view: form.view,
+    category: form.category ?? 'not chosen yet',
+  };
 }
 
 const routes = {
@@ -508,7 +624,7 @@ const routes = {
       for (const other of workspaces.values()) {
         booting += Object.values(other.runner.statuses()).filter((entry) => entry.status === 'starting').length;
       }
-      const warnings = await preflight(workspace.root, project, booting);
+      const warnings = await preflight(project, booting, workspace.knownPorts.get(name) ?? []);
       if (warnings.length > 0) {
         sendJson(response, 409, { warnings });
         return;
@@ -546,19 +662,32 @@ const routes = {
       sendJson(response, 404, { error: 'unknown workspace' });
       return;
     }
-    if (workspace.external[name]) {
-      await killExternal(workspace.external[name].pid);
-      delete workspace.external[name];
-      broadcast('external', { workspaces: externalByWorkspace() });
-    } else {
-      workspace.runner.stop(name);
+    if (!workspace.project(name)) {
+      sendJson(response, 404, { error: `unknown service "${name}" in "${workspace.name}"` });
+      return;
     }
-    const previous = workspace.runner.statuses()[name]?.mode;
-    setTimeout(async () => {
-      startService(workspace, name, { live: previous === 'live' });
-      await workspace.watchSources(name);
-    }, 2000);
+    // The wait for the old process can take seconds, so the answer does not.
+    restartService(workspace, name).catch(() => undefined);
     sendJson(response, 200, { restarting: true });
+  },
+
+  // Every service helm-dev started and that is up (or still booting). One started
+  // outside helm-dev is left alone: restarting it would silently move it under
+  // helm-dev, which nobody asked for when they pressed a button for "all".
+  'POST /api/restart-all': async (request, response) => {
+    const { repo } = await readJsonBody(request);
+    const targets = repo ? [workspaces.get(repo)].filter(Boolean) : [...workspaces.values()];
+    const restarting = [];
+    let skippedExternal = 0;
+    for (const workspace of targets) {
+      for (const [name, entry] of Object.entries(workspace.runner.statuses())) {
+        if (entry.status !== 'running' && entry.status !== 'starting') continue;
+        restarting.push(`${workspace.name}/${name}`);
+        restartService(workspace, name).catch(() => undefined);
+      }
+      skippedExternal += Object.keys(workspace.external).length;
+    }
+    sendJson(response, 200, { restarting, skippedExternal });
   },
 
   'POST /api/stop-all': async (request, response) => {
@@ -661,6 +790,46 @@ const routes = {
     sendJson(response, 200, meta);
   },
 
+  // Filing an issue acts as the person's GitHub account, so unlike the other
+  // routes it refuses a request that came from some other site's page: a browser
+  // tab on any origin can reach localhost, and must not be able to post as them.
+  'GET /api/report': async (_request, response) => {
+    sendJson(response, 200, { ...(await reportTarget(HERE)), categories: CATEGORIES });
+  },
+
+  'POST /api/report/preview': async (request, response) => {
+    if (!sameOrigin(request)) {
+      sendJson(response, 403, { error: 'cross-origin request refused' });
+      return;
+    }
+    const form = await readJsonBody(request, REPORT_LIMIT_BYTES);
+    sendJson(response, 200, { metadata: await buildMetadata(reportContext(form), HERE) });
+  },
+
+  'POST /api/report': async (request, response) => {
+    if (!sameOrigin(request)) {
+      sendJson(response, 403, { error: 'cross-origin request refused' });
+      return;
+    }
+    const form = await readJsonBody(request, REPORT_LIMIT_BYTES);
+    const problem = validateReport(form);
+    if (problem) {
+      sendJson(response, 400, { error: problem });
+      return;
+    }
+    const target = await reportTarget(HERE);
+    if (!target.ready) {
+      sendJson(response, 503, { error: target.reason });
+      return;
+    }
+    const metadata = await buildMetadata(reportContext(form), HERE);
+    try {
+      sendJson(response, 200, await submitReport(form, metadata, target));
+    } catch (error) {
+      sendJson(response, 502, { error: `GitHub refused the report: ${error.message.split('\n')[0]}` });
+    }
+  },
+
   // Frees the buffer, server and every connected tab. Distinct from the "clear
   // screen" button on the page, which only moves a watermark and keeps the data —
   // this one actually releases the memory, and cannot be undone.
@@ -688,8 +857,7 @@ const server = createServer(async (request, response) => {
   }
 
   if (url.pathname === '/api/logs') {
-    const limit = Number(url.searchParams.get('limit') ?? 2000);
-    sendJson(response, 200, buffer.slice(-limit));
+    sendJson(response, 200, queryLogs(url.searchParams));
     return;
   }
 
@@ -698,7 +866,7 @@ const server = createServer(async (request, response) => {
     try {
       await handler(request, response);
     } catch (error) {
-      sendJson(response, 500, { error: error.message });
+      sendJson(response, error.status ?? 500, { error: error.message });
     }
     return;
   }

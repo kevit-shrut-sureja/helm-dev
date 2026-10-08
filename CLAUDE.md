@@ -33,8 +33,11 @@ package, that is a signal to reconsider the approach.
 ```
 helm-dev            entry script (node with tuned heap flags)
 server.mjs          HTTP + SSE, routes, workspace lifecycle
+helmctl, cli.mjs    command line for a running instance: status, start, stop, restart, logs
 check.mjs           static check: broken references between the files below
 smoke.mjs           boots the page's modules in Node against a running instance
+e2e.mjs             starts its own helm-dev, exercises every route and the log pipeline
+lifecycle.mjs       fake workspace + fake npx: restart, force-kill, port learning, helmctl
 
 lib/workspace.mjs   one watched repository and everything derived from it
 lib/runner.mjs      spawns nx serve, parses log formats, boot/failure states
@@ -44,7 +47,10 @@ lib/detect.mjs      finds services started outside helm-dev
 lib/watcher.mjs     source watching for staleness
 lib/preflight.mjs   memory and port checks before a start
 lib/stats.mjs       per-service memory, git state
+lib/report.mjs      files a bug report as a GitHub issue through `gh`
 lib/tailer.mjs      tails <service>.log drop files
+
+skills/helm-dev/   Claude Code skill teaching AI chats to use helmctl (installed by symlink)
 
 public/index.html   the page, and the only place the modules are listed
 public/app.js       boot: load state, paint, subscribe, hand over
@@ -55,6 +61,7 @@ public/filters.js   what reaches the log pane, and the chips that say so
 public/logs.js      the virtualised log pane
 public/detail.js    the pane that opens on a line
 public/panels.js    settings, help, and closing them on a click away
+public/report.js    the bug report form
 public/layout.js    theme and the draggable dividers
 public/styles/      one stylesheet per area, loaded in the order index.html lists
 ```
@@ -150,6 +157,28 @@ defers them, so the DOM is ready when any of them runs.
   invalidation: `reindex()` always builds a new `LogSiteIndex` instance rather
   than mutating the old one, so a stale cache cannot outlive the index it caches.
 
+- **Ports are learned from the sockets a service opens, never from a file.**
+  `.env`, `.env.example` and `project.json` each described a port the service did not
+  always use, and a stack with none of them would never confirm. The listening sockets
+  of the service's own process tree are the truth; Node's inspector ports (announced on
+  stderr, one per process in a cluster) are excluded by what the process says, not by
+  number. A service marked ready by a log line is still watched for its port for two
+  minutes, since the log usually wins the race against the 2s check.
+- **Restart waits for the real exit, then for the port.** `runner.settled()` resolves from
+  the status events; a fixed delay started a second process while the first was dying.
+  Every exit/error handler first checks it still belongs to the current process, because
+  a forced kill reports `stopped` before the OS confirms it — the late `exit` event would
+  otherwise mark the *new* process stopped.
+- **`restart-all` leaves services started outside helm-dev alone.** Restarting one would
+  quietly move it under helm-dev, which nobody asked for by pressing a button for "all".
+- **`resolve()` never falls back to another service's source.** A message that matched
+  only in `platform` was being credited to `platform-apis`. Template patterns with fewer
+  than 6 fixed characters are dropped on load: `${code} : ${text}` matches every message
+  here that has a colon.
+- **The page resyncs when its event stream reconnects.** `EventSource` reconnects
+  silently and nothing replays what it missed, so a service that came up meanwhile stayed
+  "starting" until a refresh.
+
 ## Testing changes
 
 Two checks, then your eyes. Run both before committing:
@@ -159,6 +188,8 @@ node check.mjs      # static: nothing refers to something that is gone
 node smoke.mjs      # boots the page's modules against a running instance
 node e2e.mjs         # full run: starts its own helm-dev, exercises every route
                       # and the real log pipeline, then runs smoke.mjs against it
+node lifecycle.mjs   # restart, force-kill and port learning against a fake workspace
+                      # and the real helmctl — ~20s, touches no real settings
 ```
 
 `check.mjs` exists because every serious bug here has been the same one: an edit

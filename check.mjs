@@ -20,7 +20,7 @@ const GLOBALS = new Set([
   'fetch', 'confirm', 'alert', 'prompt', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
   'requestAnimationFrame', 'Number', 'String', 'Boolean', 'Math', 'JSON', 'Date', 'Array', 'Object', 'Set', 'Map',
   'RegExp', 'Error', 'parseInt', 'parseFloat', 'isNaN', 'EventSource', 'URL', 'URLSearchParams', 'localStorage',
-  'console', 'document', 'window', 'navigator', 'translateY', 'rgba', 'url', 'all', 'file', 'line', 'not',
+  'console', 'document', 'window', 'navigator', 'btoa', 'Uint8Array', 'Option', 'translateY', 'rgba', 'url', 'all', 'file', 'line', 'not',
 ]);
 const read = (file) => readFileSync(join(HERE, file), 'utf8');
 const problems = [];

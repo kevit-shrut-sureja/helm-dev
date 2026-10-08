@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Command-line control of a running helm-dev. Resolves its own location through
+# symlinks, so it can be linked onto PATH: ln -s "$PWD/helmctl" ~/.local/bin/helmctl
+exec node "$(dirname "$(readlink -f "$0")")/cli.mjs" "$@"

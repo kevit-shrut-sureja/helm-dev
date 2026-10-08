@@ -171,6 +171,32 @@ check('POST /api/stop-all with nothing running', stopAll.status === 200);
 const missing = await fetch(`${BASE}/api/nope`, { method: 'POST' });
 check('unknown route 404s', missing.status === 404);
 
+/* ---------- bug reports: everything short of filing a real issue ---------- */
+const reportInfo = await (await fetch(`${BASE}/api/report`)).json();
+check('GET /api/report names the categories', Array.isArray(reportInfo.categories) && reportInfo.categories.length > 3,
+  `${reportInfo.categories?.length} categories, ready=${reportInfo.ready}`);
+
+const noTitle = await post('/api/report', { title: '  ', description: 'x', category: reportInfo.categories?.[0] });
+check('a report without a title is refused before GitHub is contacted', noTitle.status === 400, noTitle.body?.error);
+
+const badImage = await post('/api/report', {
+  title: 't', description: 'x', category: reportInfo.categories?.[0], images: [{ type: 'application/x-sh', data: 'AAAA' }],
+});
+check('a report refuses a non-image attachment', badImage.status === 400, badImage.body?.error);
+
+const foreign = await fetch(`${BASE}/api/report`, {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', origin: 'http://evil.example' },
+  body: JSON.stringify({ title: 't', description: 'x', category: reportInfo.categories?.[0] }),
+});
+check('a report from another site is refused', foreign.status === 403, `status ${foreign.status}`);
+
+const meta = await post('/api/report/preview', { category: reportInfo.categories?.[0], view: { showNoise: false, hiddenLevels: ['raw'], focusCount: 1, hasSearch: true } });
+const home = process.env.HOME ?? '';
+check('the preview lists workspaces and services', /\*\*Workspaces\*\*/.test(meta.body?.metadata ?? '') && /\*\*Services\*\*/.test(meta.body?.metadata ?? ''),
+  `${(meta.body?.metadata ?? '').length} chars`);
+check('the preview never contains the home directory or search text', home.length > 1 && !(meta.body?.metadata ?? '').includes(home));
+
 /* ---------- the log pipeline, through a tailed drop file ---------- */
 await mkdir(TAIL, { recursive: true });
 const before = received.length;

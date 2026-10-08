@@ -109,13 +109,27 @@ function liveServices() {
 }
 
 /**
- * Enables the stop-all control only when something is actually running.
+ * Lists the services that are up or still booting — what "restart all" acts on.
+ * One started outside helm-dev is left out, as the server leaves it alone.
+ * @returns records of { repo, name }
+ */
+function restartableServices() {
+  return liveServices().filter(({ repo, name }) => ['running', 'starting'].includes(serviceState(repo, name)));
+}
+
+/**
+ * Enables the stop-all and restart-all controls only when something is actually running.
  */
 function renderStopAll() {
   const count = liveServices().length;
   const button = document.getElementById('stopAll');
   button.disabled = count === 0;
   button.textContent = count === 0 ? 'stop all' : `stop all (${count})`;
+
+  const restartable = restartableServices().length;
+  const restart = document.getElementById('restartAll');
+  restart.disabled = restartable === 0;
+  restart.textContent = restartable === 0 ? 'restart all' : `restart all (${restartable})`;
 }
 
 /**
@@ -155,7 +169,8 @@ function serviceRowHtml(workspace, project, options = {}) {
         : 'started without live reload — use ▶L if you want it',
     );
   }
-  if (unconfirmed) notes.push('no boot signal seen — assumed up after 60s');
+  if (entry.ports?.length > 0) notes.push(`listening on ${entry.ports.map((port) => `:${port}`).join(' ')}`);
+  if (unconfirmed) notes.push('not seen listening yet — assumed up after 60s');
   if (muted) notes.push('logs muted — click the muted badge to enable');
   notes.push(live ? 'click to show only this service' : 'click ▶ to start');
 
@@ -440,6 +455,15 @@ document.getElementById('stopAll').addEventListener('click', async (event) => {
   if (!confirm(`Stop ${live.length} service(s)?\n\n${listed}`)) return;
   event.target.textContent = 'stopping…';
   await post('/api/stop-all');
+  renderServices();
+});
+
+document.getElementById('restartAll').addEventListener('click', async () => {
+  const running = restartableServices();
+  if (running.length === 0) return;
+  const listed = running.map((service) => `${service.repo}/${service.name}`).join(', ');
+  if (!confirm(`Restart ${running.length} service(s)? Each is stopped, then started again a few at a time.\n\n${listed}`)) return;
+  await post('/api/restart-all');
   renderServices();
 });
 

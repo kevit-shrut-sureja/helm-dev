@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/styles/detail.css" />
     <link rel="stylesheet" href="/styles/header.css" />
     <link rel="stylesheet" href="/styles/panels.css" />
+    <link rel="stylesheet" href="/styles/report.css" />
     <script>
       // The theme has to be on <html> before the first paint; layout.js only gets
       // there once the modules have loaded, which shows a frame of the default.
@@ -38,6 +39,7 @@
             </svg>
             helm-dev<span class="version" id="version"></span>
           </span>
+          <button id="reportBtn" class="mini" title="report a bug">bug</button>
           <button id="helpBtn" class="mini" title="keyboard shortcuts (?)">?</button>
           <button id="settingsBtn" class="mini" title="settings">&#9881;</button>
         </div>
@@ -52,7 +54,10 @@
 
       <div class="section-title section-title-row">
         <span>Services</span>
-        <button id="stopAll" class="mini" title="stop every running service">stop all</button>
+        <span class="section-actions">
+          <button id="restartAll" class="mini" title="stop every running service, then start it again">restart all</button>
+          <button id="stopAll" class="mini" title="stop every running service">stop all</button>
+        </span>
       </div>
       <input type="text" id="serviceFilter" class="service-filter" placeholder="filter services…" autocomplete="off" />
       <div class="services" id="services"></div>
@@ -165,6 +170,57 @@
         <span>Enable single-key shortcuts</span>
         <small>Turn this off if you would rather type freely. Stored in this browser.</small>
       </label>
+      </div>
+    </div>
+
+    <div id="reportPanel" class="panel report-panel" hidden>
+      <header>
+        <strong>Report a bug</strong>
+        <span class="grow"></span>
+        <button id="reportClose" class="mini">&times;</button>
+      </header>
+
+      <div class="panel-body" id="reportForm">
+        <p id="reportTarget" class="panel-note"></p>
+
+        <label class="setting">
+          <span>What went wrong?</span>
+          <select id="reportCategory"></select>
+        </label>
+        <label class="setting">
+          <span>Title</span>
+          <input type="text" id="reportTitle" maxlength="200" autocomplete="off" placeholder="one line, e.g. platform-apis stays yellow after it starts" />
+        </label>
+        <label class="setting">
+          <span>Description</span>
+          <textarea id="reportDesc" rows="6" placeholder="What did you do, what did you expect, what happened instead?"></textarea>
+          <small>Paste a screenshot straight into this box, or add images below.</small>
+        </label>
+        <div class="setting">
+          <span>Screenshots</span>
+          <div id="reportShots" class="report-shots"></div>
+          <button id="reportAddShot" class="mini">add image</button>
+          <input type="file" id="reportFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden />
+        </div>
+
+        <details id="reportMeta" class="report-meta">
+          <summary>Added automatically — see exactly what is sent</summary>
+          <pre id="reportPreview">loading…</pre>
+          <small>Branches, service states, versions and which filters were on. No log lines are included.</small>
+        </details>
+
+        <small id="reportError" class="panel-error"></small>
+        <div class="report-actions">
+          <button id="reportSend" class="mini">send report</button>
+          <span id="reportBusy" class="report-busy" hidden>sending…</span>
+        </div>
+      </div>
+
+      <div class="panel-body" id="reportDone" hidden>
+        <p class="panel-note">Report sent. Thank you.</p>
+        <p><a id="reportLink" href="#" target="_blank" rel="noopener"></a></p>
+        <small id="reportWarning" class="panel-error"></small>
+        <div class="report-actions"><button id="reportAnother" class="mini">report another</button></div>
       </div>
     </div>
 

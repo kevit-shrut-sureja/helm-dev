@@ -44,6 +44,39 @@ them first, which is what `--resume` reads back.
 - **Watches several workspaces** — work in one repository while running a single
   service from another; each gets its own section.
 
+## Command line — for you and for AI assistants
+
+`helmctl` drives a running helm-dev from a terminal, so a script or an AI assistant
+can check on and restart services without the browser. It is only a client of the
+same server, so what it shows is exactly what the page shows.
+
+```bash
+./helmctl status                       # what is up, on which ports, for how long
+./helmctl restart platform-apis        # waits until it is up again, or says why it is not
+./helmctl restart --all                # every service that is up
+./helmctl logs platform-apis --level error,warn -n 50
+./helmctl logs --grep "timeout" --since 10m
+./helmctl logs platform --follow --for 30
+./helmctl resolve platform "User is authorized on bot"   # the file:line behind a message
+```
+
+Link it onto your PATH with `ln -s "$PWD/helmctl" ~/.local/bin/helmctl`. A service is
+`name`, or `repo/name` when two workspaces share a name. It exits 0 when done, 1 when
+a service failed or timed out, and 2 for bad usage or when helm-dev is not running
+(`--port` or `HELMDEV_PORT` picks the server). `helmctl help` lists everything.
+
+**Telling an AI assistant about it:** paste *"This machine runs helm-dev. Use
+`./helmctl status`, `./helmctl restart <service>` and `./helmctl logs <service>
+--level error` (run `./helmctl help` first) to check on and restart services."*
+Output is deliberately short and ends with a summary line.
+
+**Or install the Claude Code skill**, which teaches it all of this (and to ask you once
+per chat whether you use helm-dev):
+
+```bash
+mkdir -p ~/.claude/skills && ln -s "$PWD/skills/helm-dev" ~/.claude/skills/helm-dev
+```
+
 ## Requirements
 
 | | |
