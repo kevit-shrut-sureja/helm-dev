@@ -11,6 +11,7 @@ import { Workspace } from './lib/workspace.mjs';
 import { gitStatus, serviceMemory } from './lib/stats.mjs';
 import { availableMemoryMB, portsInUse, preflight } from './lib/preflight.mjs';
 import { LogTailer } from './lib/tailer.mjs';
+import { accessPolicy } from './lib/access.mjs';
 import { loadSettings, saveSettings } from './lib/settings.mjs';
 import { CATEGORIES, buildMetadata, reportTarget, submitReport, validateReport } from './lib/report.mjs';
 
@@ -47,6 +48,13 @@ const SESSION_PATH = join(HERE, '.cache', 'session.json');
 // Overridable so a test can run a throwaway instance without touching real settings.
 const SETTINGS_PATH = process.env.HELMDEV_SETTINGS ?? join(HERE, 'settings.json');
 const PORT = Number(process.env.HELMDEV_PORT ?? 7788);
+// Who may connect: this machine, plus whatever `--allow=a,b` or HELMDEV_ALLOW names.
+// Deliberately not a setting — the settings route is reachable by any client.
+const allowArg = process.argv.find((arg) => arg.startsWith('--allow='));
+const allowText = allowArg ? allowArg.slice('--allow='.length) : (process.env.HELMDEV_ALLOW ?? '');
+const access = accessPolicy(allowText);
+// Only listen on every interface when someone beyond this machine was named.
+const HOST = process.env.HELMDEV_HOST ?? (access.remote ? '0.0.0.0' : '127.0.0.1');
 // Whatever the OS calls its temp directory, and per-user so two people on one
 // box do not tail each other's files.
 const TAIL_DIR = process.env.HELMDEV_TAIL_DIR ?? join(tmpdir(), `helm-dev-logs-${userInfo().username}`);
@@ -842,6 +850,11 @@ const routes = {
 };
 
 const server = createServer(async (request, response) => {
+  if (!access.allows(request.socket.remoteAddress)) {
+    response.writeHead(403, { 'content-type': 'text/plain' });
+    response.end(`helm-dev: ${request.socket.remoteAddress} is not on the allow list\n`);
+    return;
+  }
   const url = new URL(request.url, `http://localhost:${PORT}`);
 
   if (url.pathname === '/api/events') {
@@ -907,8 +920,14 @@ server.on('error', (error) => {
   throw error;
 });
 
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, HOST, () => {
   process.stdout.write(`helm-dev v${VERSION} → http://localhost:${PORT}\n`);
+  for (const rule of access.invalid) process.stderr.write(`ignoring allow rule "${rule}" — not an IPv4 address, IPv4 range or IPv6 address\n`);
+  if (access.open) {
+    process.stdout.write('ALLOWING EVERY ADDRESS — anyone who can reach this port can start and stop services and read source files\n');
+  } else if (access.remote) {
+    process.stdout.write(`listening on ${HOST}; also allowing ${allowText}\n`);
+  }
   if (workspaces.size === 0) {
     process.stdout.write('no workspace configured yet — open the page to point it at one\n');
   } else {
