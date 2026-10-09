@@ -95,11 +95,29 @@ are per-browser. Environment variables override the rest:
 | Variable | Default | Purpose |
 |---|---|---|
 | `HELMDEV_PORT` | `7788` | dashboard port |
+| `HELMDEV_ALLOW` | none | who else may connect — see below |
 | `HELMDEV_REPO` | first configured workspace | workspace to open |
 | `HELMDEV_BUFFER_MB` | `50` | log buffer budget |
 | `HELMDEV_EDITOR` | `code -g {file}:{line}` | click-to-open command |
 | `HELMDEV_TAIL_DIR` | `<tmp>/helm-dev-logs-<user>` | drop dir for tailed logs |
 | `HELMDEV_DETECT_MS` | `8000` | how often to look for services started elsewhere |
+
+### Letting other machines in
+
+By default only this machine can reach the dashboard. To allow others, name them when
+you start it (the flag wins over the variable):
+
+```bash
+./helm-dev --allow=192.168.1.40,10.0.0.0/24   # one address and one IPv4 range
+HELMDEV_ALLOW=192.168.1.40 ./helm-dev
+./helm-dev --allow=0.0.0.0                     # anyone who can reach the port
+```
+
+This machine is always allowed. Naming anyone else makes it listen on all interfaces;
+everyone not on the list gets a 403. `0.0.0.0` means *every* address, so use it only
+on a network you trust: the dashboard can start and stop processes and read your
+source. It is deliberately not a setting in the page, where a client could widen its
+own access. Restart helm-dev for a change to take effect.
 
 ### Opening files in your editor
 

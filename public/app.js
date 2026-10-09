@@ -2,7 +2,7 @@
 // modules. Nothing here belongs in any one of them.
 
 import { el, key, post, readPref, state, workspaceOf } from './core.js';
-import { applyNoise, noiseButton, renderFocus } from './filters.js';
+import { applyNoise, noiseButton, renderFocus, renderLevels } from './filters.js';
 import { appendLog, jumpToError, purgeLogs, renderLogs, renderRestore, setBufferBudget } from './logs.js';
 import { helpPanel, renderSettings, shortcutsOn } from './panels.js';
 import { renderIndexMeta, renderPresets, renderServices, renderStats } from './services.js';
@@ -172,8 +172,6 @@ document.addEventListener('keydown', (event) => {
     el.search.focus();
   } else if (event.key === 'e') {
     jumpToError(event.shiftKey ? -1 : 1);
-  } else if (event.key === 'f') {
-    document.getElementById('follow').click();
   } else if (event.key === 'n') {
     noiseButton.click();
   }
@@ -181,12 +179,10 @@ document.addEventListener('keydown', (event) => {
 
 // Restore remembered filters so a reload does not throw away the current view.
 state.showNoise = readPref('showNoise', false);
-state.follow = readPref('follow', true);
-document.getElementById('follow').classList.toggle('on', state.follow);
 for (const level of readPref('hiddenLevels', [])) {
   state.levels.delete(level);
-  document.querySelector(`.lvlFilter[data-level="${level}"]`)?.classList.remove('on');
 }
+renderLevels();
 // Focus keys became "repo/service" when workspaces arrived; anything stored in
 // the old shape can no longer match, so it is dropped rather than silently
 // filtering every line away.

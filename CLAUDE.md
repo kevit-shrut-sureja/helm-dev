@@ -45,6 +45,7 @@ lib/log-index.mjs   builds and queries the log-site index
 lib/projects.mjs    discovers and classifies Nx projects
 lib/detect.mjs      finds services started outside helm-dev
 lib/watcher.mjs     source watching for staleness
+lib/access.mjs      who may connect: loopback plus the --allow list
 lib/preflight.mjs   memory and port checks before a start
 lib/stats.mjs       per-service memory, git state
 lib/report.mjs      files a bug report as a GitHub issue through `gh`
@@ -178,6 +179,11 @@ defers them, so the DOM is ready when any of them runs.
 - **The page resyncs when its event stream reconnects.** `EventSource` reconnects
   silently and nothing replays what it missed, so a service that came up meanwhile stayed
   "starting" until a refresh.
+
+- **The allow list is a start-up argument, never a setting.** `POST /api/settings`
+  is reachable by any client that is let in, so a list stored there could be widened
+  by the very client it was meant to exclude. Loopback is always allowed, and the
+  server only binds beyond 127.0.0.1 when someone else is named.
 
 ## Testing changes
 

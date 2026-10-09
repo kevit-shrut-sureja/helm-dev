@@ -191,8 +191,8 @@ button.mini.pin.on:hover { border-color: var(--amber); }
 .add-repo input { width: 100%; }
 .add-repo input:first-child { grid-column: 1 / -1; }
 
-.shortcuts { width: 100%; border-collapse: collapse; margin: 12px 0 4px; }
-.shortcuts td { padding: 3px 0; vertical-align: top; }
+.shortcuts { width: calc(100% - 40px); border-collapse: collapse; margin: 14px 20px 4px; }
+.shortcuts td { padding: 4px 0; vertical-align: top; }
 .shortcuts td:first-child { width: 46px; }
 .shortcuts td:last-child { color: var(--muted); }
 
@@ -257,3 +257,6 @@ button.watch-start { font-size: 10px; }
   opacity: 0.8;
 }
 .svc-repo::after { content: '/'; opacity: 0.5; }
+
+.status-summary { color: var(--muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 6px; }
+.status-summary.bad { color: var(--red); }

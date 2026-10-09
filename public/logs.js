@@ -20,8 +20,7 @@ function rowHtml(row) {
       state.workspaces.length > 1 && record.repo ? `${record.repo}/${record.service}` : record.service,
     )}</span>
     <span class="lvl ${record.level}">${record.level}</span>
-    <span class="ctx">${escapeHtml(record.context ?? '')}</span>
-    <span class="msg">${escapeHtml(record.msg)}</span>
+    <span class="msg">${record.context ? `<span class="ctx">${escapeHtml(record.context)}</span>` : ''}${escapeHtml(record.msg)}</span>
     ${row.repeat > 1 ? `<span class="repeat" data-group="${row.groupId}" title="show each of the ${row.repeat} occurrences">&times;${row.repeat} &#9662;</span>` : ''}
     ${row.member ? `<span class="repeat open${row.first ? ' pinned' : ''}" data-group="${row.groupId}" title="collapse these ${row.total} back to one row">&times;${row.total} &#9652;</span>` : ''}
   </div>`;
@@ -91,7 +90,7 @@ export function setBufferBudget(megabytes) {
   bufferBudgetBytes = megabytes * 1024 * 1024;
 }
 
-const ROW_HEIGHT = 20;
+const ROW_HEIGHT = 26;
 const OVERSCAN = 12;
 let visibleRecords = [];
 let paintQueued = false;
@@ -224,7 +223,7 @@ function evictOldest() {
 /**
  * Empties the buffer entirely — server and this tab's own copy — as opposed to
  * "clear", which only moves the watermark and keeps every line reachable via
- * restore. There is nothing to restore after this.
+ * the divider's show. There is nothing to show after this.
  */
 export function purgeLogs() {
   state.logs = [];
@@ -282,7 +281,7 @@ function emptyStateHtml() {
   if (hidden > 0) {
     const who = focused.length > 0 ? ` for <strong>${escapeHtml(names(focused))}</strong>` : '';
     return `<div class="empty"><p>Screen cleared${who}. <strong>${hidden}</strong> line(s) are still buffered —
-      press <strong>restore</strong> to bring them back. New lines appear here as they arrive.</p></div>`;
+      press <strong>show</strong> at the top to bring them back. New lines appear here as they arrive.</p></div>`;
   }
 
   const done = focused.filter((service) => stateOf(service) === 'completed');
@@ -351,14 +350,23 @@ el.logs.addEventListener('click', (event) => {
 el.logs.addEventListener('scroll', schedulePaint, { passive: true });
 window.addEventListener('resize', schedulePaint);
 
+// Following is decided by where you are, not by a switch: scroll up and it lets
+// go, reach the bottom again and it resumes. The button only offers the way back.
+el.logs.addEventListener(
+  'scroll',
+  () => {
+    const atBottom = el.logs.scrollHeight - el.logs.scrollTop - el.logs.clientHeight < ROW_HEIGHT * 2;
+    if (atBottom === state.follow) return;
+    state.follow = atBottom;
+    document.getElementById('follow').classList.toggle('on', atBottom);
+  },
+  { passive: true },
+);
+
 document.getElementById('follow').addEventListener('click', (event) => {
-  state.follow = !state.follow;
-  // Only a deliberate click is remembered. Tracing and error-jumping also turn
-  // following off, and reloading into a frozen pane nobody asked for is worse
-  // than losing the setting.
-  writePref('follow', state.follow);
-  event.target.classList.toggle('on');
-  if (state.follow) jumpToLatest();
+  state.follow = true;
+  event.target.classList.add('on');
+  jumpToLatest();
 });
 
 document.getElementById('purge').addEventListener('click', async (event) => {
@@ -389,11 +397,13 @@ document.getElementById('clear').addEventListener('click', () => {
 });
 
 /**
- * Shows or hides the control that brings cleared lines back into view.
+ * Shows or hides the divider that brings cleared lines back into view.
  */
 export function renderRestore() {
-  const button = document.getElementById('restore');
-  button.style.display = state.hiddenBelow > 0 ? 'inline-block' : 'none';
+  const bar = document.getElementById('restore');
+  const hidden = state.logs.filter((entry) => entry.seq <= state.hiddenBelow).length;
+  bar.hidden = hidden === 0;
+  bar.textContent = `\u2014 ${hidden.toLocaleString()} earlier line${hidden === 1 ? '' : 's'} hidden \u00B7 show \u2014`;
 }
 
 document.getElementById('restore').addEventListener('click', () => {
@@ -401,6 +411,23 @@ document.getElementById('restore').addEventListener('click', () => {
   renderLogs();
   renderRestore();
 });
+
+/**
+ * Opens the line above or below the selected one, for the detail pane's arrows.
+ * @param direction - 1 for the next line, -1 for the previous
+ */
+export function stepSelection(direction) {
+  const at = visibleRecords.findIndex((row) => row.record.seq === state.selected);
+  const target = visibleRecords[at + direction];
+  if (at === -1 || !target) return;
+  const top = el.logs.scrollTop;
+  const bottom = top + el.logs.clientHeight;
+  const y = (at + direction) * ROW_HEIGHT;
+  if (y < top) el.logs.scrollTop = y;
+  else if (y + ROW_HEIGHT > bottom) el.logs.scrollTop = y + ROW_HEIGHT - el.logs.clientHeight;
+  schedulePaint();
+  showDetail(target.record);
+}
 
 /**
  * Scrolls to the next or previous error/warning below or above the viewport.
@@ -421,4 +448,3 @@ export function jumpToError(direction) {
   schedulePaint();
 }
 
-document.getElementById('nextError').addEventListener('click', () => jumpToError(1));

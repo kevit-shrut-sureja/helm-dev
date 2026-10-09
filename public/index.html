@@ -53,7 +53,7 @@
       <div class="presets" id="presets"></div>
 
       <div class="section-title section-title-row">
-        <span>Services</span>
+        <span>Services <small id="statusSummary" class="status-summary"></small></span>
         <span class="section-actions">
           <button id="restartAll" class="mini" title="stop every running service, then start it again">restart all</button>
           <button id="stopAll" class="mini" title="stop every running service">stop all</button>
@@ -67,27 +67,31 @@
 
     <div class="main">
       <div class="toolbar">
-        <button data-level="error" class="lvlFilter on">error</button>
-        <button data-level="warn" class="lvlFilter on">warn</button>
-        <button data-level="info" class="lvlFilter on">info</button>
-        <button data-level="debug" class="lvlFilter on">debug</button>
-        <button data-level="raw" class="lvlFilter on">raw</button>
+        <div class="levels">
+          <button id="levelBtn" title="which levels to show">levels: all &#9662;</button>
+          <div id="levelMenu" class="menu" hidden>
+            <label><input type="checkbox" data-level="error" checked /> error</label>
+            <label><input type="checkbox" data-level="warn" checked /> warn</label>
+            <label><input type="checkbox" data-level="info" checked /> info</label>
+            <label><input type="checkbox" data-level="debug" checked /> debug</label>
+            <label><input type="checkbox" data-level="raw" checked /> raw</label>
+          </div>
+        </div>
         <button id="noise" title="Nest bootstrap and Nx build output — 78% of a typical session">noise</button>
         <input type="text" id="search" placeholder="filter text…  ( / )" />
         <span id="focusChips" class="chips"></span>
         <span class="grow"></span>
         <span class="count" id="count"></span>
-        <button id="follow" class="on">follow</button>
-        <button id="clear" title="clear the screen — the buffer is kept">clear</button>
-        <button id="restore" title="bring cleared lines back">restore</button>
-        <button id="purge" class="danger" title="permanently free all buffered logs — this cannot be undone">clear memory</button>
-        <button id="nextError" title="jump to next error (e)">next error &#8595;</button>
-        <button id="reindex">reindex</button>
+        <button id="clear" title="hide everything logged so far — the lines stay buffered and can be shown again">clear</button>
       </div>
 
       <div class="split" id="split">
-        <div class="logs" id="logs">
-          <div class="logs-spacer" id="logsSpacer"><div class="logs-window" id="logsWindow"></div></div>
+        <div class="logs-wrap">
+          <button id="restore" class="hidden-bar" hidden></button>
+          <div class="logs" id="logs">
+            <div class="logs-spacer" id="logsSpacer"><div class="logs-window" id="logsWindow"></div></div>
+          </div>
+          <button id="follow" class="on jump" title="back to the newest line">jump to latest &#8595;</button>
         </div>
         <div class="resizer" id="resizer" title="drag to resize"></div>
         <div class="detail" id="detail"></div>
@@ -115,11 +119,23 @@
         <small id="addRepoError" class="panel-error"></small>
         <small>Drag a section in the sidebar to reorder them.</small>
 
+        <h4>Logs</h4>
+        <div class="setting">
+          <span>Free the buffer</span>
+          <button id="purge" class="mini danger" title="permanently free all buffered logs — this cannot be undone">clear memory</button>
+          <small>Drops every buffered line, here and on the server. The <em>clear</em> button only hides them.</small>
+        </div>
+        <div class="setting">
+          <span>Log-site index</span>
+          <button id="reindex" class="mini">reindex</button>
+          <small>Rebuild the map from log messages to source lines. Rarely needed — it follows git HEAD.</small>
+        </div>
+
         <h4>Appearance</h4>
         <label class="setting">
           <span>Theme</span>
           <select id="theme">
-            <option value="slate">slate</option>
+            <option value="slate">aurora</option>
             <option value="midnight">midnight</option>
             <option value="carbon">carbon</option>
             <option value="black">black</option>
@@ -156,7 +172,6 @@
         <tr><td><kbd>/</kbd></td><td>focus the filter box</td></tr>
         <tr><td><kbd>e</kbd></td><td>jump to next error</td></tr>
         <tr><td><kbd>E</kbd></td><td>jump to previous error</td></tr>
-        <tr><td><kbd>f</kbd></td><td>toggle follow</td></tr>
         <tr><td><kbd>n</kbd></td><td>toggle build/framework noise</td></tr>
         <tr><td><kbd>Esc</kbd></td><td>drop the trace, then close the detail pane</td></tr>
         <tr><td><kbd>?</kbd></td><td>this list</td></tr>

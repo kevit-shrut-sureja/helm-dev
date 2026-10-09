@@ -71,20 +71,24 @@
 
 /* ---------- panels (settings, shortcuts) ---------- */
 
+/* Centred, with the page dimmed behind it by an oversized shadow — no backdrop
+   element to manage, and a click on the dimmed area still counts as "outside". */
 .panel {
   position: fixed;
-  top: 52px;
-  left: 14px;
-  width: 360px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
   max-width: calc(100vw - 28px);
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 60px);
   z-index: 30;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  backdrop-filter: blur(18px);
   border: 1px solid var(--border);
   border-radius: 8px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 0 100vmax rgba(2, 4, 10, 0.62), 0 24px 70px rgba(0, 0, 0, 0.6);
 }
 .panel[hidden] { display: none; }
 
@@ -92,35 +96,45 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 11px 14px;
+  padding: 16px 20px;
   border-bottom: 1px solid var(--border);
 }
+.panel header strong { font-size: 15px; font-weight: 600; }
 .panel header .grow { flex: 1; }
 
-.panel-body { padding: 4px 14px 14px; overflow-y: auto; }
+.panel-body { padding: 6px 20px 20px; overflow-y: auto; }
 
 .panel-body h4 {
-  margin: 16px 0 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  font-size: 10px;
+  margin: 22px 0 10px;
+  font-size: 11px;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.8px;
+  letter-spacing: 0.9px;
   color: var(--muted);
 }
-.panel-body h4:first-child { border-top: 0; padding-top: 0; margin-top: 12px; }
+.panel-body h4:first-child { margin-top: 14px; }
 
-.panel-note { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 12px 0 0; }
+.panel-note { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 12px 0 0; }
 .panel-note code { color: var(--accent); }
 .panel-error { color: var(--red); }
 
-.panel-body small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.5; margin-top: 5px; }
+.panel-body small { display: block; color: var(--muted); font-size: 11px; line-height: 1.5; margin-top: 6px; }
 
-.setting { display: block; margin-bottom: 12px; }
-.setting > span { display: block; margin-bottom: 6px; }
+/* Each setting is a card, so a long panel reads as a list of things rather than a wall. */
+.setting {
+  display: block;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.setting > span { display: block; margin-bottom: 8px; font-weight: 500; }
 .setting input[type='range'] { width: 100%; accent-color: var(--accent); }
-.setting.checkbox { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; align-items: center; }
+.setting.checkbox { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; align-items: center; }
+.setting.checkbox > span { margin: 0; }
 .setting.checkbox small { grid-column: 2; margin-top: 0; }
+.setting.checkbox input { accent-color: var(--accent); width: 16px; height: 16px; }
 
 /* ---------- stale server notice ---------- */
 

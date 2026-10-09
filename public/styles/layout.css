@@ -28,7 +28,12 @@
 .split { display: grid; grid-template-columns: 1fr 0; overflow: hidden; }
 .split.detail-open { grid-template-columns: 1fr 480px; }
 
-.logs { overflow-y: auto; position: relative; contain: strict; }
+.logs-wrap { position: relative; display: grid; grid-template-rows: auto 1fr; min-height: 0; min-width: 0; overflow: hidden; }
+.logs { grid-row: 2; overflow-y: auto; position: relative; contain: strict; }
+/* Pinned to the 1fr row: with the divider hidden it would otherwise auto-place
+   into the `auto` row, and `contain: strict` gives that row nothing to size from
+   — the pane collapses to zero height while the counter still says lines are shown. */
+.logs-wrap > .logs { grid-row: 2; }
 .logs-spacer { position: relative; width: 100%; }
 .logs-window { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
 
@@ -36,27 +41,35 @@
   display: flex;
   gap: 10px;
   padding: 0 12px;
-  height: 20px;
-  line-height: 20px;
+  height: 26px;
+  line-height: 26px;
   white-space: nowrap;
   overflow: hidden;
   cursor: pointer;
   border-left: 2px solid transparent;
 }
 .row .msg { overflow: hidden; text-overflow: ellipsis; }
-.row:hover { background: var(--panel); }
+/* Before :hover so a hovered error row stays red-tinted rather than going grey. */
+.row.error, .row.fatal { background: color-mix(in srgb, var(--red) 9%, transparent); border-left-color: var(--red); }
+.row:hover { background: var(--panel-2); }
 .row.selected { background: var(--panel-2); border-left-color: var(--accent); }
-.row .time { color: #5c6478; flex: none; }
-.row .svc { color: var(--violet); flex: none; min-width: 120px; }
-.row .lvl { flex: none; min-width: 42px; text-transform: uppercase; font-size: 11px; }
-.row .ctx { color: var(--muted); flex: none; }
+.row .time { color: #5c6478; flex: none; font-family: var(--mono); font-size: 12px; }
+.row .svc, .row .ctx, .row .msg { font-family: var(--mono); font-size: 12.5px; }
+.row .svc { color: var(--violet); flex: none; width: 190px; overflow: hidden; text-overflow: ellipsis; }
+.row .lvl { flex: none; min-width: 50px; }
+.lvl {
+  align-self: center; height: 18px; line-height: 17px; padding: 0 7px; border-radius: 4px; text-align: center;
+  text-transform: uppercase; font-size: 10px; font-weight: 700; letter-spacing: 0.4px; font-family: var(--ui);
+  border: 1px solid transparent;
+}
+.row .ctx { color: var(--muted); margin-right: 8px; }
 .row .msg { flex: 1; }
 
-.lvl.error, .lvl.fatal { color: var(--red); }
-.lvl.warn { color: var(--amber); }
-.lvl.info { color: var(--green); }
-.lvl.debug, .lvl.trace { color: #6b7385; }
-.lvl.raw { color: #4d5567; }
+.lvl.error, .lvl.fatal { color: var(--red); background: color-mix(in srgb, var(--red) 16%, transparent); border-color: color-mix(in srgb, var(--red) 35%, transparent); }
+.lvl.warn { color: var(--amber); background: color-mix(in srgb, var(--amber) 15%, transparent); border-color: color-mix(in srgb, var(--amber) 35%, transparent); }
+.lvl.info { color: var(--accent); background: color-mix(in srgb, var(--accent) 15%, transparent); border-color: color-mix(in srgb, var(--accent) 35%, transparent); }
+.lvl.debug, .lvl.trace { color: #7b8499; background: rgba(125, 135, 160, 0.1); border-color: rgba(125, 135, 160, 0.22); }
+.lvl.raw { color: #5c6478; background: rgba(125, 135, 160, 0.06); border-color: rgba(125, 135, 160, 0.14); }
 
 .row.error, .row.fatal { background: rgba(248, 81, 73, 0.07); }
 

@@ -116,26 +116,27 @@ export function renderFocus() {
     );
   }
   if (parts.length === 0) {
-    chips.innerHTML = '<span class="hint">showing all services</span>';
+    chips.innerHTML = '';
     return;
   }
-  // The chips scroll; "show all" sits outside that scroller so it is always reachable.
+  // More than two chips would crowd out the filter box, so they fold into one
+  // button that opens the full list.
+  if (parts.length > 2) {
+    chips.innerHTML = `<button id="focusMore" class="chip">${parts.length} filters &#9662;</button><button id="clearFocus" class="mini" title="clear the service filter and show every log again">clear all</button><div id="focusMenu" class="menu" hidden>${parts.join('')}</div>`;
+    return;
+  }
   chips.innerHTML = `<span class="chip-scroll">${parts.join('')}</span><button id="clearFocus" class="mini" title="clear the service filter and show every log again">clear all</button>`;
-  const scroller = chips.querySelector('.chip-scroll');
-  scroller.classList.toggle('overflowing', scroller.scrollWidth > scroller.clientWidth + 1);
-  // A horizontal strip is scrolled with a vertical wheel in practice.
-  scroller.addEventListener(
-    'wheel',
-    (event) => {
-      if (scroller.scrollWidth <= scroller.clientWidth) return;
-      event.preventDefault();
-      scroller.scrollLeft += event.deltaY + event.deltaX;
-    },
-    { passive: false },
-  );
 }
 
 document.getElementById('focusChips').addEventListener('click', (event) => {
+  if (event.target.id === 'focusMore') {
+    const menu = document.getElementById('focusMenu');
+    menu.hidden = !menu.hidden;
+    const box = event.target.getBoundingClientRect();
+    menu.style.left = `${box.left}px`;
+    menu.style.top = `${box.bottom + 4}px`;
+    return;
+  }
   const chip = event.target.dataset?.chip;
   if (chip) state.focus.delete(chip);
   if (event.target.dataset?.chipTrace) state.trace = null;
@@ -148,15 +149,47 @@ document.getElementById('focusChips').addEventListener('click', (event) => {
   renderLogs();
 });
 
-for (const button of document.querySelectorAll('.lvlFilter')) {
-  button.addEventListener('click', () => {
-    const level = button.dataset.level;
-    if (state.levels.has(level)) state.levels.delete(level);
-    else state.levels.add(level);
-    button.classList.toggle('on');
-    renderLogs();
-  });
+document.addEventListener('click', (event) => {
+  const menu = document.getElementById('focusMenu');
+  if (menu && !menu.hidden && !event.target.closest('#focusChips')) menu.hidden = true;
+});
+
+const LEVELS = ['error', 'warn', 'info', 'debug', 'raw'];
+const levelBtn = document.getElementById('levelBtn');
+const levelMenu = document.getElementById('levelMenu');
+
+/**
+ * Writes the dropdown's label from the levels currently allowed through.
+ */
+export function renderLevels() {
+  const on = LEVELS.filter((level) => state.levels.has(level));
+  for (const box of levelMenu.querySelectorAll('input')) box.checked = state.levels.has(box.dataset.level);
+  const label = on.length === LEVELS.length ? 'all' : on.length === 0 ? 'none' : on.join(' ');
+  levelBtn.textContent = `levels: ${label} \u25BE`;
+  levelBtn.classList.toggle('on', on.length !== LEVELS.length);
 }
+
+levelBtn.addEventListener('click', () => {
+  levelMenu.hidden = !levelMenu.hidden;
+  if (levelMenu.hidden) return;
+  // Fixed rather than absolute: the toolbar scrolls sideways and would clip it.
+  const box = levelBtn.getBoundingClientRect();
+  levelMenu.style.left = `${box.left}px`;
+  levelMenu.style.top = `${box.bottom + 4}px`;
+});
+
+levelMenu.addEventListener('change', (event) => {
+  const level = event.target.dataset.level;
+  if (event.target.checked) state.levels.add(level);
+  else state.levels.delete(level);
+  writePref('hiddenLevels', LEVELS.filter((l) => !state.levels.has(l)));
+  renderLevels();
+  renderLogs();
+});
+
+document.addEventListener('click', (event) => {
+  if (!levelMenu.hidden && !event.target.closest('.levels')) levelMenu.hidden = true;
+});
 
 let searchTimer = null;
 el.search.addEventListener('input', () => {
@@ -182,9 +215,3 @@ noiseButton.addEventListener('click', () => {
   state.showNoise = !state.showNoise;
   applyNoise();
 });
-
-for (const button of document.querySelectorAll('.lvlFilter')) {
-  button.addEventListener('click', () => {
-    writePref('hiddenLevels', ['error', 'warn', 'info', 'debug', 'raw'].filter((l) => !state.levels.has(l)));
-  });
-}

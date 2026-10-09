@@ -3,7 +3,7 @@
 
 import { FRAMEWORK_CONTEXTS, el, escapeHtml, formatExactTime, post, state } from './core.js';
 import { correlationIds, renderFocus } from './filters.js';
-import { renderLogs } from './logs.js';
+import { renderLogs, stepSelection } from './logs.js';
 
 /**
  * Builds the prompt handed to Claude for a selected log line.
@@ -82,53 +82,64 @@ function dedent(text) {
   return lines.map((line) => line.slice(shave)).join('\n').trim();
 }
 
+// What the origin lookup returned for the open line, for the copy-for-AI button.
+let currentOrigin = null;
+
 /**
  * Renders the detail pane for the selected log record.
  * @param record - the log record
  */
 export async function showDetail(record) {
+  currentOrigin = null;
   state.selected = record.seq;
   el.split.classList.add('detail-open');
   for (const row of el.window.querySelectorAll('.row.selected')) row.classList.remove('selected');
   el.window.querySelector(`.row[data-seq="${record.seq}"]`)?.classList.add('selected');
 
-  el.detail.innerHTML = `<header><strong>${escapeHtml(record.service)}</strong>
+  const ids = correlationIds(record);
+  const kv = (name, value) => `<div class="kv-row"><span class="kv-k">${name}</span><span class="kv-v">${value}</span></div>`;
+  el.detail.innerHTML = `<header>
       <span class="lvl ${record.level}">${record.level}</span>
+      <span class="dh-time">${formatExactTime(record.at).split(' ').pop()}</span>
+      <span class="dh-svc">${escapeHtml(record.service)}</span>
       <span class="grow"></span>
-      <button id="closeDetail">close</button>
+      <button id="prevLine" class="icon" title="previous line"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l4-4 4 4"/></svg></button>
+      <button id="nextLine" class="icon" title="next line"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4 4 4-4"/></svg></button>
+      <button id="closeDetail" class="icon" title="close (Esc)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
     </header>
+    <div class="actions">
+      <button id="copyPrompt" title="copy this line, its payload, its origin and the lines before it as a prompt">&#10022; Copy for AI</button>
+      <button class="copy-btn" data-copy="${escapeHtml(record.msg)}">Copy message</button>
+    </div>
     <section>
-      <div class="section-head">
-        <h4>time</h4>
-        <button class="mini copy-btn" data-copy="${formatExactTime(record.at)}">copy</button>
-      </div>
-      <pre class="exact-time">${formatExactTime(record.at)}<span class="iso">${new Date(record.at).toISOString()}</span></pre>
+      <h4>message</h4>
+      <pre class="msgbox">${escapeHtml(record.msg)}</pre>
     </section>
     <section>
-      <div class="section-head">
-        <h4>message</h4>
-        <button class="mini copy-btn" data-copy="${escapeHtml(record.msg)}">copy message</button>
+      <h4>fields</h4>
+      <div class="kv">
+        ${kv('time', `${formatExactTime(record.at)}<span class="iso">${new Date(record.at).toISOString()}</span>`)}
+        ${kv('service', escapeHtml(state.workspaces.length > 1 && record.repo ? `${record.repo}/${record.service}` : record.service))}
+        ${record.context ? kv('context', escapeHtml(record.context)) : ''}
+        ${ids
+          .map((id) =>
+            kv(
+              escapeHtml(id.key),
+              `<span class="id-val" title="${escapeHtml(id.value)}">${escapeHtml(id.value)}</span>
+              <button class="mini trace-btn" data-key="${escapeHtml(id.key)}" data-value="${escapeHtml(id.value)}"
+                title="show every line carrying this ${escapeHtml(id.key)}">trace</button>
+              <button class="mini copy-btn" data-copy="${escapeHtml(id.value)}">copy</button>`,
+            ),
+          )
+          .join('')}
       </div>
-      <pre>${escapeHtml(record.msg)}</pre>
-      ${correlationIds(record).length > 0 ? '<h4 style="margin-top:12px">ids</h4>' : ''}
-      ${correlationIds(record)
-        .map(
-          (id) => `<div class="id-row">
-            <code class="id-key">${escapeHtml(id.key)}</code>
-            <span class="id-val" title="${escapeHtml(id.value)}">${escapeHtml(id.value)}</span>
-            <button class="mini trace-btn" data-key="${escapeHtml(id.key)}" data-value="${escapeHtml(id.value)}"
-              title="show every line carrying this ${escapeHtml(id.key)}">trace</button>
-            <button class="mini copy-btn" data-copy="${escapeHtml(id.value)}">copy</button>
-          </div>`,
-        )
-        .join('')}
     </section>
     <section id="originSection"><h4>origin</h4><div class="origin">resolving…</div></section>
     ${payloadSection(record.fields)}`;
 
   // Everything that does not depend on the origin lookup is wired first. It used
   // to be wired after, which meant one failing request left trace and close dead.
-  wireDetailActions();
+  wireDetailActions(record);
 
   const section = document.getElementById('originSection');
   let origin;
@@ -147,13 +158,14 @@ export async function showDetail(record) {
     return;
   }
   if (!section) return;
+  currentOrigin = origin;
 
   if (!origin.match) {
     const kind = foreignKind(record);
     section.innerHTML = `<h4>origin</h4>
       <div class="origin"><span class="badge ${kind ? 'foreign' : 'none'}">${kind ? 'not your code' : 'not found'}</span>
       <span>${kind ?? 'no indexed logger call matches this message'}</span></div>
-      <div style="margin-top:8px"><button id="copyPrompt">copy Claude prompt</button></div>`;
+`;
   } else {
     const snippet = await post('/api/source', {
       repo: record.repo,
@@ -182,9 +194,8 @@ export async function showDetail(record) {
         ${origin.match.kind === 'console' ? '<span class="badge temp">console.log — temporary debug</span>' : ''}
         ${origin.constant ? `<span class="badge">via ${escapeHtml(origin.constant)}</span>` : ''}
         <span class="path" id="openFile">${escapeHtml(origin.match.file)}:${origin.match.line}</span>
+        <button id="openBtn" class="mini open-btn">open in editor</button>
       </div>
-      <div style="margin:8px 0"><button id="openBtn">open in VSCode</button>
-        <button id="copyPrompt">copy Claude prompt</button></div>
       <div class="snippet">${code}</div>
       ${
         others.length > 0
@@ -212,17 +223,23 @@ export async function showDetail(record) {
   const open = () => post('/api/open', { repo: record.repo, file: origin.match.file, line: origin.match.line });
   document.getElementById('openBtn')?.addEventListener('click', open);
   document.getElementById('openFile')?.addEventListener('click', open);
-  document.getElementById('copyPrompt')?.addEventListener('click', async (event) => {
-    await navigator.clipboard.writeText(buildPrompt(record, origin));
-    event.target.textContent = 'copied ✓';
-  });
 }
 
 /**
  * Wires the detail-pane buttons that work on the record alone — closing the pane
  * and tracing a correlation id — so they survive a failed origin lookup.
  */
-function wireDetailActions() {
+function wireDetailActions(record) {
+  document.getElementById('prevLine')?.addEventListener('click', () => stepSelection(-1));
+  document.getElementById('nextLine')?.addEventListener('click', () => stepSelection(1));
+  document.getElementById('copyPrompt')?.addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    await navigator.clipboard.writeText(buildPrompt(record, currentOrigin));
+    button.textContent = 'copied \u2713';
+    setTimeout(() => {
+      button.innerHTML = '&#10022; Copy for AI';
+    }, 1200);
+  });
   document.getElementById('closeDetail')?.addEventListener('click', () => {
     el.split.classList.remove('detail-open');
   });

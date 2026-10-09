@@ -126,6 +126,20 @@ function renderStopAll() {
   button.disabled = count === 0;
   button.textContent = count === 0 ? 'stop all' : `stop all (${count})`;
 
+  const tally = { running: 0, starting: 0, queued: 0, failed: 0 };
+  for (const workspace of state.workspaces) {
+    for (const project of workspace.projects) {
+      const own = serviceState(workspace.name, project.name);
+      if (own in tally) tally[own] += 1;
+    }
+  }
+  const parts = [`${tally.running} up`];
+  if (tally.starting + tally.queued > 0) parts.push(`${tally.starting + tally.queued} starting`);
+  if (tally.failed > 0) parts.push(`${tally.failed} failed`);
+  const summary = document.getElementById('statusSummary');
+  summary.textContent = tally.running + tally.starting + tally.queued + tally.failed === 0 ? '' : parts.join(' · ');
+  summary.classList.toggle('bad', tally.failed > 0);
+
   const restartable = restartableServices().length;
   const restart = document.getElementById('restartAll');
   restart.disabled = restartable === 0;
