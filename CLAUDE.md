@@ -179,6 +179,12 @@ defers them, so the DOM is ready when any of them runs.
   silently and nothing replays what it missed, so a service that came up meanwhile stayed
   "starting" until a refresh.
 
+- **The launcher updates itself before it starts.** `helm-dev` fetches (5s cap, no
+  credential prompts) and offers a fast-forward that defaults to yes after 10s. It
+  only runs on a terminal, on a clean `master`/`main`; `e2e.mjs` and `lifecycle.mjs`
+  spawn `server.mjs` directly, so they never trigger it. After updating it re-execs
+  itself, so a change to the launcher applies on the same start.
+
 ## Testing changes
 
 Two checks, then your eyes. Run both before committing:

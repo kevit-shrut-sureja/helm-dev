@@ -30,6 +30,12 @@ On first run it asks for the path to an Nx workspace — the folder containing
 ./helm-dev --reindex    # rebuild the log-site index
 ```
 
+**It keeps itself up to date.** On start, if `master` has moved on GitHub, it lists the
+new commits and asks to update — no answer in 10 seconds counts as yes. It only
+fast-forwards a clean checkout of `master`; local changes or another branch are left
+alone, and being offline just starts the current version. `HELM_DEV_NO_UPDATE=1`
+skips the check.
+
 **Quitting helm-dev stops the services it started.** That is deliberate; it records
 them first, which is what `--resume` reads back.
 
