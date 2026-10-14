@@ -1,5 +1,67 @@
 #!/usr/bin/env bash
+HERE="$(dirname "$(readlink -f "$0")")"
+
+# Offers to fast-forward this checkout when its default branch has moved on GitHub.
+# It only ever fast-forwards a clean checkout of that branch — a `git pull --ff-only`
+# split in two, so the network half can be time-limited — so it can never merge,
+# rebase or touch someone's local work; anything else is skipped.
+# Every failure (offline, no access, no upstream) degrades to starting as-is: an
+# update check must never be the reason helm-dev did not start.
+# Set HELM_DEV_NO_UPDATE=1 to skip it entirely.
+check_for_update() {
+  [ -n "$HELM_DEV_NO_UPDATE" ] && return
+  # A prompt nobody can see would just stall a script for the whole timeout.
+  [ -t 0 ] && [ -t 1 ] || return
+  command -v git >/dev/null || return
+  git -C "$HERE" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return
+
+  local branch default
+  branch="$(git -C "$HERE" symbolic-ref --quiet --short HEAD)" || return
+  default="$(git -C "$HERE" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)"
+  default="${default#origin/}"
+  # A feature branch is someone working on helm-dev itself; leave it alone.
+  if [ -n "$default" ]; then
+    [ "$branch" = "$default" ] || return
+  else
+    [ "$branch" = master ] || [ "$branch" = main ] || return
+  fi
+  git -C "$HERE" diff --quiet HEAD 2>/dev/null || return
+
+  # Never ask for a password or a host key, and give up quickly when offline —
+  # this runs on every start.
+  local fetch=(git -C "$HERE" fetch --quiet origin "$branch")
+  command -v timeout >/dev/null && fetch=(timeout 5 "${fetch[@]}")
+  GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=4" \
+    "${fetch[@]}" >/dev/null 2>&1 || return
+
+  local behind
+  behind="$(git -C "$HERE" rev-list --count "HEAD..origin/$branch" 2>/dev/null)" || return
+  [ "${behind:-0}" -gt 0 ] || return
+
+  echo "helm-dev: $behind new commit(s) on $branch:"
+  git -C "$HERE" log --oneline --no-decorate -n 5 "HEAD..origin/$branch" | sed 's/^/  /'
+  [ "$behind" -gt 5 ] && echo "  …"
+
+  # Long enough to read the list and answer, short enough that walking away from
+  # it costs little. No answer counts as yes.
+  local answer
+  read -r -t 10 -p "Update now? [Y/n] (yes in 10s) " answer || echo
+  case "$answer" in
+    [nN]*) echo "helm-dev: skipping the update."; return ;;
+  esac
+
+  if git -C "$HERE" merge --quiet --ff-only "origin/$branch"; then
+    echo "helm-dev: updated."
+    # Re-run the launcher from the updated checkout, so a change to this script
+    # takes effect too. The flag stops it checking a second time.
+    HELM_DEV_NO_UPDATE=1 exec "$HERE/helm-dev" "$@"
+  fi
+  echo "helm-dev: update failed; starting the current version."
+}
+
+check_for_update "$@"
+
 # Tuned for a small steady footprint: the heap holds ~5MB of index plus the ring
 # buffer, so a tight old-space and a small semi-space keep RSS down. The index
 # build already runs in a throwaway child process.
-exec node --max-old-space-size=64 --max-semi-space-size=1 "$(dirname "$0")/server.mjs" "$@"
+exec node --max-old-space-size=64 --max-semi-space-size=1 "$HERE/server.mjs" "$@"

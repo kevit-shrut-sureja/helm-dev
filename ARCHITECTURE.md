@@ -90,15 +90,16 @@ successfully` and `Debugger listening on` are printed long before a service is u
 and by services that then die on a missing env var.
 
 Instead: **a listening port whose pid belongs to that service's process tree.** The
-port comes from the project's own config; the pid check exists because an orphan
-from an earlier run once confirmed a service that had never started. If no port is
-ever confirmed, the service is marked running after 60 seconds and flagged
-*unconfirmed* rather than claimed as healthy.
+port is learned from the sockets that tree opens, never from a config file; the pid
+check exists because an orphan from an earlier run once confirmed a service that
+had never started. If no port is ever confirmed, the service is marked running
+after 60 seconds and flagged *unconfirmed* rather than claimed as healthy.
 
 Failure and completion are read from the stream, because **Nx keeps a failed or
 finished task alive**: a job that ends is detected from Nx's own
-`Process exited with code N` line, and only for projects tagged `type:job` — for a
-long-running service that same line means Nx is restarting the inner process.
+`Process exited with code N` line. For a job that line always counts; for an app
+only during its first boot, because once it is up the same line just means Nx is
+restarting the inner process in watch mode.
 
 ## 4 · Many services, one stream
 
@@ -212,5 +213,6 @@ public/layout.js    theme and the draggable dividers
 public/styles/      one stylesheet per area, cascade order set by index.html
 ```
 
-See [`CLAUDE.md`](CLAUDE.md) for the conventions and for the decisions that look
+See [`FEATURES.md`](FEATURES.md) for what each feature does and when, and
+[`CLAUDE.md`](CLAUDE.md) for the conventions and for the decisions that look
 wrong until you know the measurement behind them.
