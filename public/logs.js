@@ -1,7 +1,7 @@
 // The log pane. Only the rows in view exist as DOM; the rest is arithmetic.
 
 import { el, escapeHtml, formatDuration, formatTime, post, state, workspaceOf, writePref } from './core.js';
-import { showDetail } from './detail.js';
+import { closeDetail, showDetail } from './detail.js';
 import { passesFilters } from './filters.js';
 import { serviceState } from './services.js';
 
@@ -14,14 +14,12 @@ function rowHtml(row) {
   const record = row.record;
   const selected = record.seq === state.selected ? ' selected' : '';
   const member = row.member ? ' member' : '';
-  return `<div class="row ${record.level}${selected}${member}" data-seq="${record.seq}">
+  const identity = state.workspaces.length > 1 && record.repo ? `${record.repo}/${record.service}` : record.service;
+  return `<div class="row ${record.level}${selected}${member}" id="row-${record.seq}" data-seq="${record.seq}" role="option" aria-selected="${record.seq === state.selected}">
     <span class="time">${formatTime(record.at)}</span>
-    <span class="svc">${escapeHtml(
-      state.workspaces.length > 1 && record.repo ? `${record.repo}/${record.service}` : record.service,
-    )}</span>
+    <span class="svc" title="${escapeHtml(identity)}">${escapeHtml(identity)}</span>
     <span class="lvl ${record.level}">${record.level}</span>
-    <span class="ctx">${escapeHtml(record.context ?? '')}</span>
-    <span class="msg">${escapeHtml(record.msg)}</span>
+    <span class="msg">${record.context ? `<span class="ctx">${escapeHtml(record.context)}</span>` : ''}${escapeHtml(record.msg)}</span>
     ${row.repeat > 1 ? `<span class="repeat" data-group="${row.groupId}" title="show each of the ${row.repeat} occurrences">&times;${row.repeat} &#9662;</span>` : ''}
     ${row.member ? `<span class="repeat open${row.first ? ' pinned' : ''}" data-group="${row.groupId}" title="collapse these ${row.total} back to one row">&times;${row.total} &#9652;</span>` : ''}
   </div>`;
@@ -80,6 +78,16 @@ function collapse(records) {
   return rows;
 }
 
+/**
+ * Reads the log row height the current density asks for.
+ * @returns the height in pixels
+ */
+function readRowHeight() {
+  const declared = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--log-row-height'));
+  if (declared > 0) return declared;
+  return FALLBACK_ROW_HEIGHT[document.documentElement.dataset.density] ?? FALLBACK_ROW_HEIGHT.readable;
+}
+
 // The server owns the budget; the tab mirrors it so it cannot outgrow it either.
 let bufferBudgetBytes = 50 * 1024 * 1024;
 
@@ -91,7 +99,11 @@ export function setBufferBudget(megabytes) {
   bufferBudgetBytes = megabytes * 1024 * 1024;
 }
 
-const ROW_HEIGHT = 20;
+// The density's row height, read from CSS once and again when the density changes —
+// never per line, and never by measuring a row. These are only the fallback for a
+// stylesheet that has not applied yet; --log-row-height is the source of truth.
+const FALLBACK_ROW_HEIGHT = { readable: 30, compact: 26 };
+let rowHeight = readRowHeight();
 const OVERSCAN = 12;
 let visibleRecords = [];
 let paintQueued = false;
@@ -110,8 +122,8 @@ let metricsDirty = false;
  */
 function currentAnchor() {
   if (visibleRecords.length === 0) return null;
-  const index = Math.min(visibleRecords.length - 1, Math.floor(el.logs.scrollTop / ROW_HEIGHT));
-  return { seq: visibleRecords[index].record.seq, offset: index * ROW_HEIGHT - el.logs.scrollTop };
+  const index = Math.min(visibleRecords.length - 1, Math.floor(el.logs.scrollTop / rowHeight));
+  return { seq: visibleRecords[index].record.seq, offset: index * rowHeight - el.logs.scrollTop };
 }
 
 /**
@@ -122,15 +134,86 @@ function restoreAnchor(anchor) {
   if (anchor === null) return;
   let index = visibleRecords.findIndex((row) => row.record.seq >= anchor.seq);
   if (index === -1) index = visibleRecords.length - 1;
-  const max = Math.max(0, visibleRecords.length * ROW_HEIGHT - el.logs.clientHeight);
-  el.logs.scrollTop = Math.max(0, Math.min(max, index * ROW_HEIGHT - anchor.offset));
+  const max = Math.max(0, visibleRecords.length * rowHeight - el.logs.clientHeight);
+  el.logs.scrollTop = Math.max(0, Math.min(max, index * rowHeight - anchor.offset));
+}
+
+/**
+ * Re-reads the row height after the density changed and lays the list out again
+ * without losing the viewer's place. The line at the top of the pane is the
+ * anchor: its sequence number and how far into its row the pane was scrolled,
+ * as a fraction so it carries across heights. While following, the pane stays
+ * on the newest line instead.
+ */
+export function applyDensity() {
+  const before = rowHeight;
+  const after = readRowHeight();
+  if (after === before) return;
+
+  let anchor = null;
+  if (!state.follow && visibleRecords.length > 0) {
+    const index = Math.min(visibleRecords.length - 1, Math.floor(el.logs.scrollTop / before));
+    anchor = { seq: visibleRecords[index].record.seq, within: (el.logs.scrollTop - index * before) / before };
+  }
+
+  rowHeight = after;
+  const viewport = el.logs.clientHeight;
+  writeMetrics(viewport);
+  if (anchor !== null) {
+    // The line may have been evicted since; the first one at or after it is the
+    // nearest that still exists, as for every other re-render here.
+    let index = visibleRecords.findIndex((row) => row.record.seq >= anchor.seq);
+    let within = anchor.within;
+    if (index === -1) {
+      index = visibleRecords.length - 1;
+      within = 0;
+    }
+    const max = Math.max(0, visibleRecords.length * rowHeight - viewport);
+    el.logs.scrollTop = Math.min(max, (index + within) * rowHeight);
+  }
+  paintWindow();
+}
+
+/**
+ * Records whether the pane is following the newest line, and says so.
+ * @param following - true to follow, false once the viewer has scrolled away
+ */
+export function setFollow(following) {
+  state.follow = following;
+  document.getElementById('follow').classList.toggle('on', following);
+  renderFollowLabel();
+}
+
+// False while the event stream is down. "Following latest" describes where the
+// viewport is, not whether lines are arriving, so it must not read as a promise
+// of fresh output while nothing is.
+let streamLive = true;
+
+/**
+ * Says what the pane is doing about the newest line. Paused means the viewport
+ * stopped following; lines keep arriving regardless.
+ */
+function renderFollowLabel() {
+  let label = 'Auto-scroll paused';
+  if (state.follow) label = streamLive ? 'Following latest' : 'Auto-scroll on';
+  document.getElementById('followState').textContent = label;
+}
+
+/**
+ * Records whether the event stream is connected, and shows it in the status strip.
+ * @param live - false while it is down and the browser is retrying
+ */
+export function setStreamLive(live) {
+  streamLive = live;
+  document.getElementById('streamState').hidden = live;
+  renderFollowLabel();
 }
 
 /**
  * Scrolls to the newest line and keeps the pane pinned there.
  */
 function jumpToLatest() {
-  el.logs.scrollTop = Math.max(0, visibleRecords.length * ROW_HEIGHT - el.logs.clientHeight);
+  el.logs.scrollTop = Math.max(0, visibleRecords.length * rowHeight - el.logs.clientHeight);
   schedulePaint();
 }
 
@@ -151,15 +234,15 @@ export function renderLogs(options = {}) {
  * @param viewport - the pane's height, already measured for this frame
  */
 function writeMetrics(viewport) {
-  el.spacer.style.height = `${visibleRecords.length * ROW_HEIGHT}px`;
-  el.count.textContent = `${visibleRecords.length} shown / ${state.logs.length} buffered`;
+  el.spacer.style.height = `${visibleRecords.length * rowHeight}px`;
+  el.count.textContent = `${visibleRecords.length.toLocaleString()} shown \u00B7 ${state.logs.length.toLocaleString()} buffered`;
   // A button that stays clickable when there is nothing behind it can silently
   // do nothing on click, which reads as broken rather than as "already empty".
   document.getElementById('purge').disabled = state.logs.length === 0;
   // Computed rather than read back as scrollHeight: reading the layout straight
   // after writing to it forces a synchronous reflow, and this used to run once
   // per arriving log line rather than once per frame.
-  if (state.follow) el.logs.scrollTop = Math.max(0, visibleRecords.length * ROW_HEIGHT - viewport);
+  if (state.follow) el.logs.scrollTop = Math.max(0, visibleRecords.length * rowHeight - viewport);
 }
 
 /**
@@ -178,10 +261,10 @@ function paintWindow() {
     el.window.innerHTML = emptyStateHtml();
     return;
   }
-  const first = Math.max(0, Math.floor(el.logs.scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const count = Math.ceil(viewport / ROW_HEIGHT) + OVERSCAN * 2;
+  const first = Math.max(0, Math.floor(el.logs.scrollTop / rowHeight) - OVERSCAN);
+  const count = Math.ceil(viewport / rowHeight) + OVERSCAN * 2;
   const slice = visibleRecords.slice(first, first + count);
-  el.window.style.transform = `translateY(${first * ROW_HEIGHT}px)`;
+  el.window.style.transform = `translateY(${first * rowHeight}px)`;
   el.window.innerHTML = slice.map(rowHtml).join('');
 }
 
@@ -224,14 +307,14 @@ function evictOldest() {
 /**
  * Empties the buffer entirely — server and this tab's own copy — as opposed to
  * "clear", which only moves the watermark and keeps every line reachable via
- * restore. There is nothing to restore after this.
+ * the divider's show. There is nothing to show after this.
  */
 export function purgeLogs() {
   state.logs = [];
   state.bytes = 0;
   state.hiddenBelow = 0;
   state.selected = null;
-  el.split.classList.remove('detail-open');
+  closeDetail();
   renderLogs();
   renderRestore();
 }
@@ -269,8 +352,8 @@ function emptyStateHtml() {
     return `<div class="empty">
       <p><strong>${escapeHtml(names(failed))}</strong> did not start.</p>
       ${reason ? `<p class="fail-reason">${escapeHtml(reason)}</p>` : ''}
-      <p>Turn on <strong>raw</strong> and <strong>noise</strong> above to see the full build output,
-      fix the cause, then press <strong>&#10227;</strong> to try again.</p>
+      <p>Enable <strong>raw</strong> under <strong>Levels</strong> and switch off <strong>Hide noise</strong> to see the
+      full build output, fix the cause, then press <strong>Restart</strong> on the service's row.</p>
     </div>`;
   }
   if (state.trace !== null) {
@@ -282,7 +365,7 @@ function emptyStateHtml() {
   if (hidden > 0) {
     const who = focused.length > 0 ? ` for <strong>${escapeHtml(names(focused))}</strong>` : '';
     return `<div class="empty"><p>Screen cleared${who}. <strong>${hidden}</strong> line(s) are still buffered —
-      press <strong>restore</strong> to bring them back. New lines appear here as they arrive.</p></div>`;
+      press <strong>show</strong> at the top to bring them back. New lines appear here as they arrive.</p></div>`;
   }
 
   const done = focused.filter((service) => stateOf(service) === 'completed');
@@ -290,7 +373,7 @@ function emptyStateHtml() {
     const ran = workspaceOf(done[0].repo)?.statuses[done[0].name]?.ranForMs;
     return `<div class="empty"><p><strong>${escapeHtml(names(done))}</strong> finished and exited cleanly${
       ran ? ` after ${formatDuration(ran)}` : ''
-    }. Its output above is the whole run; press <strong>&#9654;</strong> to run it again.</p></div>`;
+    }. Its output above is the whole run; press <strong>Start</strong> on its row to run it again.</p></div>`;
   }
 
   const externals = focused.filter((service) => workspaceOf(service.repo)?.external[service.name]);
@@ -300,7 +383,7 @@ function emptyStateHtml() {
       helm-dev, so its output goes to that terminal — helm-dev cannot attach to a process it did not spawn.</p>
       <p>Two ways to get these logs here:</p>
       <ol>
-        <li>Press <strong>&#10227;</strong> on the service to stop it and start it under helm-dev.</li>
+        <li>Press <strong>Restart</strong> on the service's row to stop it and start it under helm-dev.</li>
         <li>Keep your terminal and tee into the drop dir:
           <code>npm start ${escapeHtml(externals[0].name)} 2&gt;&amp;1 | tee ${escapeHtml(state.tailDir ?? '/tmp/helm-dev-logs')}/${escapeHtml(externals[0].name)}.log</code></li>
       </ol>
@@ -320,26 +403,33 @@ function emptyStateHtml() {
   }
   if (focused.length > 0) {
     return `<div class="empty"><p>No logs yet for <strong>${escapeHtml(names(focused))}</strong>.
-      Press <strong>&#9654;</strong> to start it, or <em>clear all</em> to drop the filter.</p></div>`;
+      Press <strong>Start</strong> on its row, or use <strong>Clear scope</strong>.</p></div>`;
   }
-  return `<div class="empty"><p>No logs yet. Start a service with <strong>&#9654;</strong>,
+  return `<div class="empty"><p>No logs yet. Start a service with the play button on its row,
     or click a running one to focus just its output.</p></div>`;
+}
+
+/**
+ * Expands or folds a run of repeated lines, keeping the run where it was on screen.
+ * @param groupId - the sequence number that identifies the run
+ * @param offset - how far below the pane's top the run's row sits
+ */
+function toggleGroup(groupId, offset) {
+  const wasFollowing = state.follow;
+  // Expanding inserts rows above the fold, so pin the run in place.
+  if (state.expanded.has(groupId)) state.expanded.delete(groupId);
+  else state.expanded.add(groupId);
+  // Following would drag the view straight back to the bottom.
+  state.follow = false;
+  renderLogs({ anchor: { seq: groupId, offset } });
+  setFollow(wasFollowing && state.expanded.size === 0);
 }
 
 el.logs.addEventListener('click', (event) => {
   const badge = event.target.closest('.repeat');
   if (badge) {
-    const groupId = Number(badge.dataset.group);
-    const wasFollowing = state.follow;
-    // Expanding inserts rows above the fold, so pin the clicked run in place.
-    const anchor = { seq: groupId, offset: badge.closest('.row').getBoundingClientRect().top - el.logs.getBoundingClientRect().top };
-    if (state.expanded.has(groupId)) state.expanded.delete(groupId);
-    else state.expanded.add(groupId);
-    // Following would drag the view straight back to the bottom.
-    state.follow = false;
-    renderLogs({ anchor });
-    state.follow = wasFollowing && state.expanded.size === 0;
-    document.getElementById('follow').classList.toggle('on', state.follow);
+    const offset = badge.closest('.row').getBoundingClientRect().top - el.logs.getBoundingClientRect().top;
+    toggleGroup(Number(badge.dataset.group), offset);
     return;
   }
   const row = event.target.closest('.row');
@@ -349,16 +439,65 @@ el.logs.addEventListener('click', (event) => {
 });
 
 el.logs.addEventListener('scroll', schedulePaint, { passive: true });
-window.addEventListener('resize', schedulePaint);
 
-document.getElementById('follow').addEventListener('click', (event) => {
-  state.follow = !state.follow;
-  // Only a deliberate click is remembered. Tracing and error-jumping also turn
-  // following off, and reloading into a frozen pane nobody asked for is worse
-  // than losing the setting.
-  writePref('follow', state.follow);
-  event.target.classList.toggle('on');
-  if (state.follow) jumpToLatest();
+// The pane's own size changes with the toolbar rows, the status strip, the
+// inspector and the window, and a scrollbar appearing narrows it without any of
+// those. One observer covers them all; the header borrows the scrollbar's width so
+// its columns line up with the rows'.
+new ResizeObserver(() => {
+  el.logs.parentElement.style.setProperty('--scrollbar-w', `${el.logs.offsetWidth - el.logs.clientWidth}px`);
+  metricsDirty = true;
+  schedulePaint();
+}).observe(el.logs);
+
+// Following is decided by where you are, not by a switch: scroll up and it lets
+// go, reach the bottom again and it resumes. The button only offers the way back.
+el.logs.addEventListener(
+  'scroll',
+  () => {
+    const atBottom = el.logs.scrollHeight - el.logs.scrollTop - el.logs.clientHeight < rowHeight * 2;
+    if (atBottom === state.follow) return;
+    setFollow(atBottom);
+  },
+  { passive: true },
+);
+
+// The list is one tab stop: rows are rebuilt on every paint, so none of them can
+// hold focus. Arrow keys move the selection, which is what opens the inspector.
+el.logs.addEventListener('keydown', (event) => {
+  if (event.ctrlKey || event.metaKey || event.altKey) return;
+  const at = visibleRecords.findIndex((row) => row.record.seq === state.selected);
+  const page = Math.max(1, Math.floor(el.logs.clientHeight / rowHeight) - 1);
+  const last = visibleRecords.length - 1;
+  if (last < 0) return;
+  // With nothing selected yet, the first move lands on the top line in view.
+  const start = at === -1 ? Math.min(last, Math.ceil(el.logs.scrollTop / rowHeight)) : at;
+  let target = null;
+  if (event.key === 'ArrowDown') target = at === -1 ? start : at + 1;
+  else if (event.key === 'ArrowUp') target = at === -1 ? start : at - 1;
+  else if (event.key === 'PageDown') target = start + page;
+  else if (event.key === 'PageUp') target = start - page;
+  else if (event.key === 'Home') target = 0;
+  else if (event.key === 'End') target = last;
+  else if (event.key === 'Enter' && at !== -1) target = at;
+  else if ((event.key === 'ArrowRight' || event.key === 'ArrowLeft') && at !== -1) {
+    const row = visibleRecords[at];
+    const folded = row.repeat > 1;
+    const open = row.member === true;
+    if ((event.key === 'ArrowRight' && folded) || (event.key === 'ArrowLeft' && open)) {
+      event.preventDefault();
+      toggleGroup(row.groupId, at * rowHeight - el.logs.scrollTop);
+    }
+    return;
+  }
+  if (target === null) return;
+  event.preventDefault();
+  selectAt(Math.max(0, Math.min(last, target)));
+});
+
+document.getElementById('follow').addEventListener('click', () => {
+  setFollow(true);
+  jumpToLatest();
 });
 
 document.getElementById('purge').addEventListener('click', async (event) => {
@@ -389,11 +528,13 @@ document.getElementById('clear').addEventListener('click', () => {
 });
 
 /**
- * Shows or hides the control that brings cleared lines back into view.
+ * Shows or hides the divider that brings cleared lines back into view.
  */
 export function renderRestore() {
-  const button = document.getElementById('restore');
-  button.style.display = state.hiddenBelow > 0 ? 'inline-block' : 'none';
+  const bar = document.getElementById('restore');
+  const hidden = state.logs.filter((entry) => entry.seq <= state.hiddenBelow).length;
+  bar.hidden = hidden === 0;
+  bar.textContent = `\u2014 ${hidden.toLocaleString()} earlier line${hidden === 1 ? '' : 's'} hidden \u00B7 show \u2014`;
 }
 
 document.getElementById('restore').addEventListener('click', () => {
@@ -403,11 +544,37 @@ document.getElementById('restore').addEventListener('click', () => {
 });
 
 /**
+ * Selects a row by position, scrolling it into view and opening its details.
+ * @param index - the row's position in the visible list
+ */
+function selectAt(index) {
+  const target = visibleRecords[index];
+  if (!target) return;
+  const top = el.logs.scrollTop;
+  const bottom = top + el.logs.clientHeight;
+  const y = index * rowHeight;
+  if (y < top) el.logs.scrollTop = y;
+  else if (y + rowHeight > bottom) el.logs.scrollTop = y + rowHeight - el.logs.clientHeight;
+  schedulePaint();
+  showDetail(target.record);
+}
+
+/**
+ * Opens the line above or below the selected one, for the detail pane's arrows.
+ * @param direction - 1 for the next line, -1 for the previous
+ */
+export function stepSelection(direction) {
+  const at = visibleRecords.findIndex((row) => row.record.seq === state.selected);
+  if (at === -1) return;
+  selectAt(at + direction);
+}
+
+/**
  * Scrolls to the next or previous error/warning below or above the viewport.
  * @param direction - 1 to search forward, -1 to search back
  */
 export function jumpToError(direction) {
-  const current = Math.round(el.logs.scrollTop / ROW_HEIGHT);
+  const current = Math.round(el.logs.scrollTop / rowHeight);
   const isProblem = (row) => row.record.level === 'error' || row.record.level === 'fatal';
   const range =
     direction > 0
@@ -415,10 +582,8 @@ export function jumpToError(direction) {
       : visibleRecords.slice(0, current).reverse().findIndex(isProblem);
   if (range === -1) return;
   const target = direction > 0 ? current + 1 + range : current - 1 - range;
-  state.follow = false;
-  document.getElementById('follow').classList.remove('on');
-  el.logs.scrollTop = Math.max(0, target * ROW_HEIGHT - el.logs.clientHeight / 3);
+  setFollow(false);
+  el.logs.scrollTop = Math.max(0, target * rowHeight - el.logs.clientHeight / 3);
   schedulePaint();
 }
 
-document.getElementById('nextError').addEventListener('click', () => jumpToError(1));

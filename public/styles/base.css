@@ -1,21 +1,83 @@
-/* Reset, the design tokens every other file reads, and the themes that redefine them.
+/* Reset, the design tokens every other file reads, the themes that redefine them,
+   and the controls every area shares: buttons, inputs, badges, menus, focus.
 
    Order is load-bearing: rules here are overridden by later ones, so move a block
    between files only after checking nothing else styles the same selector. */
 
 :root {
-  --bg: #0f1115;
-  --panel: #161922;
-  --panel-2: #1c2029;
-  --border: #272c38;
-  --text: #d7dbe3;
-  --muted: #8a92a6;
-  --accent: #5aa9ff;
-  --green: #3fb950;
-  --red: #f85149;
-  --amber: #d29922;
-  --violet: #a371f7;
+  --bg: #07090f;
+  --panel: #0c101a;
+  --panel-2: #131827;
+  --border: #1d2434;
+  --text: #e6e9f2;
+  --accent: #6f8fff;
+  --green: #2fd08a;
+  --red: #ff5a73;
+  --amber: #ffa63d;
+  --violet: #a58bff;
+  /* A backdrop layer a theme may add; none by default — a dev tool wants flat. */
+  --glow: none;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --ui: Inter, 'Segoe UI', system-ui, -apple-system, sans-serif;
+
+  /* Semantic tokens. Defined here in terms of the theme's own colours, so a theme
+     that only sets the base palette still gets states that are distinct from each
+     other; the themes below override a value only where the derived one fell short
+     of 4.5:1 for text or 3:1 for a control boundary. */
+  --text-secondary: color-mix(in srgb, var(--text) 68%, var(--panel));
+  /* Decoration only: idle dots and the like. Never text. */
+  --text-faint: color-mix(in srgb, var(--text) 38%, var(--panel));
+  --surface-hover: color-mix(in srgb, var(--text) 7%, var(--panel));
+  --surface-selected: color-mix(in srgb, var(--accent) 22%, var(--panel));
+  --surface-selected-hover: color-mix(in srgb, var(--accent) 30%, var(--panel));
+  --border-strong: color-mix(in srgb, var(--text) 38%, var(--panel));
+  --focus-ring: var(--accent);
+  /* Older rules say --muted; it is the same colour as secondary text, never dimmer. */
+  --muted: var(--text-secondary);
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius: var(--radius-md);
+
+  /* Spacing scale: 4, 8, 12, 16, 24. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+
+  /* Readable density, the default. Compact overrides only what differs. */
+  --fs-body: 14px;
+  --lh-body: 20px;
+  --fs-log: 13px;
+  --fs-secondary: 12px;
+  --lh-secondary: 18px;
+  --fs-badge: 12px;
+  --lh-badge: 18px;
+  --fs-title: 16px;
+  --lh-title: 22px;
+  --control-h: 32px;
+  /* The sidebar is dense on purpose: it lists dozens of services, and its controls
+     are smaller than the 32px everywhere else so more of them fit on screen. */
+  --service-row-h: 30px;
+  --svc-action: 26px;
+  --fs-service: 13px;
+  /* Read once by logs.js to size the virtual list, so it is the only place the
+     row height is written. */
+  --log-row-height: 30px;
+}
+
+:root[data-density='compact'] {
+  --fs-body: 13px;
+  --lh-body: 18px;
+  --fs-log: 12px;
+  --fs-badge: 11px;
+  --lh-badge: 16px;
+  --control-h: 28px;
+  --service-row-h: 26px;
+  --svc-action: 24px;
+  --log-row-height: 26px;
 }
 
 * { box-sizing: border-box; }
@@ -24,56 +86,282 @@ body {
   margin: 0;
   height: 100vh;
   display: grid;
-  grid-template-columns: var(--sidebar-width, 330px) 5px 1fr;
-  background: var(--bg);
+  grid-template-columns: var(--sidebar-width, 304px) 1px 1fr;
+  background: var(--glow) fixed no-repeat, var(--bg);
   color: var(--text);
-  font: 13px/1.45 var(--mono);
+  font: 400 var(--fs-body)/var(--lh-body) var(--ui);
 }
+
+/* A class rule that sets `display` would otherwise outrank the browser's own
+   [hidden] rule, so the attribute stops hiding buttons and chips. */
+[hidden] { display: none !important; }
+
+/* Visually hidden, still read by assistive technology. Absolutely positioned, so
+   whatever contains it must establish a containing block (`position: relative`) or
+   its offscreen position escapes the container's clipping and grows the page. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- controls ---------- */
 
 button {
   font: inherit;
+  font-weight: 500;
   color: var(--text);
   background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 3px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  white-space: nowrap;
   cursor: pointer;
+  /* Colour only: nothing here may move, resize or reflow its neighbours. */
+  transition: background-color 0.11s, border-color 0.11s, color 0.11s;
 }
-button:hover { border-color: var(--accent); }
-button.on { background: var(--accent); color: #0b0d12; border-color: var(--accent); }
+button:hover { background: var(--surface-hover); border-color: color-mix(in srgb, var(--accent) 70%, var(--border-strong)); }
+button:active { background: var(--bg); }
+button.on {
+  background: var(--surface-selected);
+  color: var(--text);
+  border-color: var(--accent);
+}
+button.on:hover { background: var(--surface-selected-hover); }
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+  color: var(--text-secondary);
+  background: transparent;
+  border-color: var(--border);
+}
 
-input[type='text'] {
+/* The small controls — a text button in a row of them — are the same height as any
+   other; only the padding tightens. */
+button.mini {
+  padding: 0 var(--space-2);
+  background: transparent;
+}
+button.mini:hover { background: var(--surface-hover); }
+button.mini:disabled { background: transparent; }
+
+/* A square target for a single glyph. */
+button.icon-btn {
+  width: var(--control-h);
+  padding: 0;
+  flex: none;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+button.icon-btn:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border-strong); }
+button.icon-btn svg { width: 16px; height: 16px; flex: none; }
+
+/* Red only on hover — a genuinely destructive action should look ordinary until
+   you reach for it, not sit in the toolbar shouting the whole time. */
+button.danger:hover { color: var(--red); border-color: var(--red); }
+/* Disabled when the buffer is already empty, so a click either does something
+   real or the button visibly cannot be clicked — never a silent no-op. */
+button.danger:disabled { color: var(--text-secondary); border-color: var(--border); }
+
+input[type='text'],
+select {
   font: inherit;
   color: var(--text);
   background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 4px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  min-height: var(--control-h);
+  padding: 0 var(--space-3);
 }
+input[type='text']::placeholder { color: var(--text-secondary); opacity: 1; }
+input[type='text']:focus { border-color: var(--accent); }
+
+/* One focus ring for everything a keyboard can reach. Rows and bars that are
+   clipped by their container use the inset variant so the ring is not cut off. */
+:focus { outline: 0; }
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+.logs:focus-visible,
+.service button:focus-visible,
+.repo-head button:focus-visible,
+.menu button:focus-visible,
+.menu label:focus-within,
+.hidden-bar:focus-visible,
+.separator:focus-visible {
+  outline-offset: -2px;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 var(--space-2);
+  text-align: center;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
+  color: var(--text);
+}
+
+/* ---------- badges ---------- */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: var(--fs-badge);
+  line-height: var(--lh-badge);
+  font-weight: 500;
+  padding: 0 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  flex: none;
+}
+.badge.exact { color: var(--green); border-color: var(--green); }
+.badge.pattern { color: var(--accent); border-color: var(--accent); }
+.badge.ambiguous { color: var(--amber); border-color: var(--amber); }
+.badge.none { color: var(--red); border-color: var(--red); }
+.badge.foreign { color: var(--text-secondary); border-color: var(--border-strong); }
+.badge.temp { color: var(--amber); border-color: var(--amber); }
+.badge.constant, .badge.prefix { color: var(--violet); border-color: var(--violet); }
+.badge.definition { color: var(--text-secondary); border-color: var(--border-strong); }
+.badge.ext { color: var(--accent); border-color: var(--accent); }
+
+/* ---------- menus ---------- */
+
+/* Fixed rather than absolute: the panes around them clip, and a menu has to be
+   able to sit over all of them. menus.js positions it against its trigger. */
+.menu {
+  position: fixed;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-1);
+  min-width: 200px;
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+.menu[hidden] { display: none; }
+.menu label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: 0 var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.menu label:hover { background: var(--surface-hover); }
+.menu input[type='checkbox'] { width: 16px; height: 16px; accent-color: var(--accent); }
+.menu [role='menuitem'] {
+  width: 100%;
+  min-height: var(--control-h);
+  justify-content: flex-start;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0;
+  padding: var(--space-1) var(--space-3);
+  text-align: left;
+  white-space: normal;
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--radius-sm);
+}
+.menu [role='menuitem']:hover:not(:disabled) { background: var(--surface-hover); border-color: transparent; }
+.menu [role='menuitem'] small { font-size: var(--fs-secondary); line-height: var(--lh-secondary); font-weight: 400; color: var(--text-secondary); }
+.menu [role='menuitem']:disabled { opacity: 1; }
+.menu [role='menuitem']:disabled > span { color: var(--text-secondary); }
+.menu .menu-sep { height: 1px; margin: var(--space-1) 0; background: var(--border); }
+.menu .menu-danger:hover:not(:disabled) > span { color: var(--red); }
 
 /* ---------- themes ---------- */
 
 :root[data-theme='midnight'] {
+  --glow: none;
   --bg: #0a0e1a; --panel: #101728; --panel-2: #172033; --border: #1f2a40;
-  --text: #cbd5e9; --muted: #7788a8; --accent: #6ea8ff; --violet: #9d84f5;
+  --text: #cbd5e9; --accent: #6ea8ff; --violet: #9d84f5;
+  --text-secondary: color-mix(in srgb, var(--text) 81%, var(--panel));
+  --border-strong: color-mix(in srgb, var(--text) 41%, var(--panel));
 }
 :root[data-theme='carbon'] {
+  --glow: none;
   --bg: #121212; --panel: #1a1a1a; --panel-2: #222; --border: #2e2e2e;
-  --text: #dcdcdc; --muted: #8a8a8a; --accent: #7fb3ff; --violet: #c39bf0;
+  --text: #dcdcdc; --accent: #7fb3ff; --violet: #c39bf0;
+  --text-secondary: color-mix(in srgb, var(--text) 81%, var(--panel));
+  --border-strong: color-mix(in srgb, var(--text) 40%, var(--panel));
 }
 :root[data-theme='amber'] {
+  --glow: none;
   --bg: #17130d; --panel: #1f1a12; --panel-2: #2a2318; --border: #3a3020;
-  --text: #e8dcc4; --muted: #9c8d72; --accent: #e0a44a; --violet: #d98f5e;
+  --text: #e8dcc4; --accent: #e0a44a; --violet: #d98f5e;
   --green: #96b94a;
+  --text-secondary: color-mix(in srgb, var(--text) 81%, var(--panel));
+  --border-strong: color-mix(in srgb, var(--text) 40%, var(--panel));
 }
 :root[data-theme='black'] {
+  --glow: none;
   --bg: #000000; --panel: #080808; --panel-2: #121212; --border: #1f1f1f;
-  --text: #e6e6e6; --muted: #7d7d7d; --accent: #58a6ff; --violet: #b087f7;
+  --text: #e6e6e6; --accent: #58a6ff; --violet: #b087f7;
   --green: #3fb950; --red: #ff6b61; --amber: #e3b341;
+  /* Neutral greys: ordinary surfaces carry no hue, so blue means selected or active. */
+  --text-secondary: #a8a8a8;
+  --surface-hover: #181818;
+  --surface-selected: #10243a;
+  --surface-selected-hover: #14304d;
+  --border-strong: #666666;
+}
+/* The blue-grey palette Black briefly had, kept as its own theme. */
+:root[data-theme='charcoal'] {
+  --glow: none;
+  --bg: #080a0d; --panel: #101318; --panel-2: #181d25; --border: #29313d;
+  --text: #e6edf3; --accent: #78b7ff; --violet: #b087f7;
+  --green: #3fb950; --red: #ff6b61; --amber: #e3b341;
+  --text-secondary: #a1adbd;
+  --surface-hover: #1b2330;
+  --surface-selected: #17334d;
+  --surface-selected-hover: #1c3d59;
+  --border-strong: #5f6469;
 }
 
 :root[data-theme='light'] {
+  --glow: none;
   --bg: #fbfbfd; --panel: #f2f3f7; --panel-2: #e8eaf0; --border: #d6d9e3;
-  --text: #22252c; --muted: #6b7180; --accent: #1f6feb; --violet: #7b4fd1;
-  --green: #1a7f37; --red: #cf222e; --amber: #9a6700;
+  --text: #22252c; --accent: #0b5fd0; --violet: #6a3dc0;
+  --green: #17702f; --red: #c4161f; --amber: #8a5700;
+  --text-secondary: color-mix(in srgb, var(--text) 78%, var(--panel));
+  --border-strong: color-mix(in srgb, var(--text) 51%, var(--panel));
+  --surface-hover: color-mix(in srgb, var(--text) 6%, var(--panel));
+}
+
+/* ---------- motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

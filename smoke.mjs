@@ -23,6 +23,9 @@ const element = (id) =>
         if (prop === 'addEventListener') return (type) => listeners.push(`${id}:${type}`);
         if (prop === 'removeEventListener') return () => undefined;
         if (prop === 'contains') return () => false;
+        if (prop === 'setAttribute' || prop === 'removeAttribute') return () => undefined;
+        if (prop === 'getAttribute') return () => null;
+        if (prop === 'getBoundingClientRect') return () => ({ top: 0, left: 0, right: 0, bottom: 0 });
         if (prop === 'classList') return { add() {}, remove() {}, toggle() {}, contains: () => false };
         if (prop === 'dataset') return {};
         if (prop === 'style') return { setProperty() {} };
@@ -63,6 +66,10 @@ globalThis.window = {
 };
 globalThis.localStorage = { getItem: () => null, setItem() {}, };
 Object.defineProperty(globalThis, 'navigator', { value: { clipboard: { writeText: async () => undefined } }, configurable: true });
+// Observers and style reads the page uses for layout; a stub has no layout to report.
+globalThis.getComputedStyle = () => ({ getPropertyValue: () => '' });
+globalThis.ResizeObserver = class { observe() {} disconnect() {} };
+globalThis.MutationObserver = class { observe() {} disconnect() {} };
 globalThis.requestAnimationFrame = (fn) => setTimeout(fn, 0);
 globalThis.confirm = () => false;
 globalThis.EventSource = class {

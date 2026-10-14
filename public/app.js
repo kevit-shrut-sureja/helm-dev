@@ -2,9 +2,10 @@
 // modules. Nothing here belongs in any one of them.
 
 import { el, key, post, readPref, state, workspaceOf } from './core.js';
-import { applyNoise, noiseButton, renderFocus } from './filters.js';
-import { appendLog, jumpToError, purgeLogs, renderLogs, renderRestore, setBufferBudget } from './logs.js';
-import { helpPanel, renderSettings, shortcutsOn } from './panels.js';
+import { applyNoise, noiseButton, renderFocus, renderLevels } from './filters.js';
+import { closeDetail } from './detail.js';
+import { appendLog, jumpToError, purgeLogs, renderLogs, renderRestore, setBufferBudget, setStreamLive } from './logs.js';
+import { helpPanel, renderSettings, shortcutsOn, togglePanel } from './panels.js';
 import { renderIndexMeta, renderPresets, renderServices, renderStats } from './services.js';
 import { renderWorkspaceList } from './workspaces.js';
 import './report.js';
@@ -85,7 +86,10 @@ async function resync() {
 
 const events = new EventSource('/api/events');
 let streamOpened = false;
+// EventSource retries on its own; the page's part is to say it is not live meanwhile.
+events.onerror = () => setStreamLive(false);
 events.onopen = () => {
+  setStreamLive(true);
   // The first open is the boot itself; only a later one is a reconnect.
   if (!streamOpened) {
     streamOpened = true;
@@ -149,31 +153,35 @@ events.onmessage = (message) => {
 document.addEventListener('keydown', (event) => {
   // Never hijack a browser shortcut: Ctrl+C is copy, not "clear".
   if (event.ctrlKey || event.metaKey || event.altKey) return;
-  const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName);
+  // Fields, and anything inside a menu, are for typing or choosing — never shortcuts.
+  const typing =
+    ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName) ||
+    event.target.isContentEditable === true ||
+    event.target.closest?.('[role="menu"]') != null;
   if (!shortcutsOn && event.key !== 'Escape') return;
   // Someone mid-selection is copying, not issuing commands.
   if (event.key !== 'Escape' && (window.getSelection()?.toString().length ?? 0) > 0) return;
   if (event.key === 'Escape') {
-    if (state.trace !== null) {
+    // A floating inspector is a dialog, and a dialog closes on Escape.
+    const floating = el.split.classList.contains('detail-open') && el.split.dataset.inspector === 'overlay';
+    if (state.trace !== null && !floating) {
       state.trace = null;
       renderFocus();
       renderLogs();
     } else {
-      el.split.classList.remove('detail-open');
+      closeDetail();
     }
     el.search.blur();
     return;
   }
   if (typing) return;
   if (event.key === '?') {
-    helpPanel.hidden = !helpPanel.hidden;
+    togglePanel(helpPanel);
   } else if (event.key === '/') {
     event.preventDefault();
     el.search.focus();
   } else if (event.key === 'e') {
     jumpToError(event.shiftKey ? -1 : 1);
-  } else if (event.key === 'f') {
-    document.getElementById('follow').click();
   } else if (event.key === 'n') {
     noiseButton.click();
   }
@@ -181,12 +189,10 @@ document.addEventListener('keydown', (event) => {
 
 // Restore remembered filters so a reload does not throw away the current view.
 state.showNoise = readPref('showNoise', false);
-state.follow = readPref('follow', true);
-document.getElementById('follow').classList.toggle('on', state.follow);
 for (const level of readPref('hiddenLevels', [])) {
   state.levels.delete(level);
-  document.querySelector(`.lvlFilter[data-level="${level}"]`)?.classList.remove('on');
 }
+renderLevels();
 // Focus keys became "repo/service" when workspaces arrived; anything stored in
 // the old shape can no longer match, so it is dropped rather than silently
 // filtering every line away.

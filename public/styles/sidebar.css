@@ -3,224 +3,112 @@
    Order is load-bearing: rules here are overridden by later ones, so move a block
    between files only after checking nothing else styles the same selector. */
 
-/* ---------- sidebar ---------- */
-
 .sidebar {
   background: var(--panel);
-  border-right: 1px solid var(--border);
+  border-right: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0;
 }
 
-.brand {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-  font-weight: 700;
-  letter-spacing: 0.5px;
-}
-.brand small { display: block; color: var(--muted); font-weight: 400; font-size: 11px; }
+/* ---------- headings ---------- */
 
 .section-title {
-  padding: 10px 14px 4px;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.7px;
-}
-
-.services { overflow-y: auto; flex: 1; padding-bottom: 8px; }
-
-.service {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 14px;
-  cursor: pointer;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--control-h);
+  padding: var(--space-2) var(--space-4) 0;
+  color: var(--text-secondary);
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
+  font-weight: 600;
 }
-.service:hover { background: var(--panel-2); }
-/* The name is what the eye is scanning for, so it is the last thing allowed to
-   shrink: everything beside it gives up its width first, down to 9 characters. */
-.service .name {
-  flex: 1 1 auto;
-  min-width: 9ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.service .dot { width: 7px; height: 7px; border-radius: 50%; background: #3a3f4d; flex: none; }
-.service .dot.running { background: var(--green); }
-.service .dot.stopping { background: var(--amber); }
-
-.presets { padding: 4px 10px 12px; display: flex; flex-wrap: wrap; gap: 5px; }
-
-/* ---------- service controls & staleness ---------- */
-
-.service .dot.external { background: var(--accent); }
-/* Staleness used to tint the whole row amber, which made "your code moved on"
-   louder than a service that failed to boot — and a failure only gets a red dot.
-   Now that live services are lifted into their own short section at the top, the
-   badge alone is findable, and it carries the count the tint never could. */
-
-.badge.stale-badge {
-  color: var(--amber);
-  border-color: var(--amber);
-  background: rgba(210, 153, 34, 0.14);
-}
-.badge.ext { color: var(--accent); border-color: var(--accent); }
-
-
-button.mini {
-  padding: 0 5px;
-  line-height: 17px;
-  font-size: 12px;
+.section-title .status-summary { color: var(--text-secondary); font-weight: 400; margin-left: var(--space-2); }
+.section-title .status-summary.bad { color: var(--red); }
+.services-title { flex-wrap: wrap; row-gap: var(--space-1); }
+/* One compact row of labelled buttons; when the sidebar is too narrow for them
+   beside the heading they wrap beneath it rather than turning into a menu. */
+.bulk-actions { display: inline-flex; gap: var(--space-1); margin-left: auto; }
+.svc-btn {
+  min-height: var(--svc-action);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
   background: transparent;
 }
-button.mini:hover { background: var(--panel-2); }
+.svc-btn:hover:not(:disabled) { background: var(--surface-hover); }
+#stopAll:hover:not(:disabled) { color: var(--red); border-color: var(--red); }
 
-/* ---------- workspace sections ---------- */
-
-.repo-section + .repo-section { margin-top: 4px; }
-
-.repo-head {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px 2px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--muted);
-  border-top: 1px solid var(--border);
-  cursor: pointer;
-  user-select: none;
-}
-.repo-section:first-child .repo-head { border-top: 0; }
-.repo-head:hover { color: var(--text); }
-.repo-head .repo-caret { font-size: 9px; flex: none; opacity: 0.7; }
-.repo-head .repo-name { color: var(--text); font-weight: 700; flex: none; }
-.repo-head .repo-live { margin-left: auto; color: var(--green); white-space: nowrap; flex: none; }
-.repo-head .repo-stop { flex: none; color: var(--muted); padding: 0 5px; line-height: 15px; }
-.repo-head .repo-stop:hover { color: var(--red); border-color: var(--red); }
-
-/* The branch sits under the workspace name and is clipped rather than wrapped;
-   the full value is in the tooltip. */
-.repo-branch {
-  padding: 0 14px 6px 26px;
-  font-size: 11px;
-  color: var(--accent);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  cursor: default;
-}
-
-.no-match { padding: 14px; color: var(--muted); font-size: 11px; }
-
-.service-filter {
-  width: calc(100% - 20px);
-  margin: 2px 10px 6px;
-  font-size: 12px;
-}
-
-.service.pinned .name { color: var(--text); }
-/* A star, not a dot: a filled dot here reads as another status light. */
-button.mini.pin { color: var(--muted); font-size: 15px; line-height: 15px; padding: 0 4px; }
-button.mini.pin:hover { color: var(--amber); border-color: var(--amber); }
-button.mini.pin.on { color: var(--amber); background: transparent; border-color: transparent; }
-button.mini.pin.on:hover { border-color: var(--amber); }
-.service .actions { display: none; gap: 3px; flex: none; }
-/* Stale rows used to keep their controls open. The amber row and the NΔ badge
-   already say a service is behind its source; the buttons only cost the width
-   the service name needs, so they wait for a hover like everywhere else. */
-.service:hover .actions, .service.pinned .actions { display: flex; }
-
-/* ---------- workspace sections ---------- */
-
-.repo-section + .repo-section { margin-top: 6px; }
-.repo-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 8px 14px 3px;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--muted);
-  border-top: 1px solid var(--border);
-}
-.repo-section:first-child .repo-head { border-top: 0; }
-.repo-head .repo-name { color: var(--text); font-weight: 700; }
-.repo-head .repo-branch {
-  flex: 1 1 auto;
-  min-width: 0;
-  color: var(--accent);
-  text-transform: none;
-  letter-spacing: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.repo-head .repo-live { margin-left: auto; color: var(--green); white-space: nowrap; flex: none; }
-.repo-head .repo-stop { flex: none; color: var(--muted); padding: 0 5px; line-height: 15px; }
-.repo-head .repo-stop:hover { color: var(--red); border-color: var(--red); }
-.repo-head .repo-name { flex: none; }
-
-/* ---------- workspace list ---------- */
-
-.workspace-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 0;
-  border-bottom: 1px solid var(--border);
-}
-.workspace-row:last-child { border-bottom: 0; }
-.workspace-row .workspace-name { flex: none; font-weight: 700; min-width: 74px; }
-.workspace-row .workspace-path {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.add-repo { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 10px; }
-.add-repo input { width: 100%; }
-.add-repo input:first-child { grid-column: 1 / -1; }
-
-.shortcuts { width: 100%; border-collapse: collapse; margin: 12px 0 4px; }
-.shortcuts td { padding: 3px 0; vertical-align: top; }
-.shortcuts td:first-child { width: 46px; }
-.shortcuts td:last-child { color: var(--muted); }
-
-/* ---------- badges, presets and drag state ---------- */
-
-button.watch-start { font-size: 10px; }
-.badge.watch-badge { color: var(--green); border-color: var(--green); }
-.badge.live-badge { color: var(--green); border-color: var(--green); opacity: 0.8; }
-.badge.done-badge { color: var(--green); border-color: var(--green); opacity: 0.85; }
-
-.empty .fail-reason {
-  color: var(--red);
-  background: rgba(248, 81, 73, 0.08);
-  border-left: 2px solid var(--red);
-  padding: 8px 10px;
-  white-space: pre-wrap;
-}
-
+.presets { padding: var(--space-2) var(--space-4) var(--space-3); display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .preset { display: inline-flex; align-items: stretch; }
 .preset > button:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
 .preset .preset-del {
   border-left: 0;
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
-  padding: 0 5px;
-  color: var(--muted);
+  padding: 0 var(--space-2);
+  color: var(--text-secondary);
 }
 .preset .preset-del:hover { color: var(--red); border-color: var(--red); }
+
+.service-filter { width: calc(100% - 32px); margin: var(--space-2) var(--space-4); }
+
+.services { overflow-y: auto; flex: 1; padding-bottom: var(--space-2); }
+.no-match { padding: var(--space-4); color: var(--text-secondary); }
+
+/* ---------- workspace sections ---------- */
+
+.repo-section + .repo-section { margin-top: var(--space-1); }
+
+.repo-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: calc(var(--service-row-h) + 2px);
+  padding: 0 var(--space-2) 0 var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--text-secondary);
+  user-select: none;
+}
+.repo-section:first-child .repo-head,
+.live-section:first-child .repo-head { border-top: 0; }
+/* A button that reads as a heading: the whole row toggles, and the keyboard can
+   reach it. Its sibling stop button is never nested inside it. */
+.repo-head .repo-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  min-height: var(--svc-action);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border-color: transparent;
+  font-size: var(--fs-service);
+  font-weight: 600;
+  color: var(--text);
+}
+.repo-head .repo-toggle:hover { background: var(--surface-hover); border-color: transparent; }
+.repo-head .repo-caret { font-size: var(--fs-secondary); flex: none; color: var(--text-secondary); width: 12px; }
+.repo-head .repo-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; }
+.repo-head .repo-live { margin-left: auto; color: var(--green); font-size: var(--fs-secondary); font-weight: 400; white-space: nowrap; flex: none; }
+.repo-head .repo-stop { flex: none; width: var(--svc-action); min-height: var(--svc-action); }
+.repo-head .repo-stop:hover { color: var(--red); border-color: var(--red); }
+
+/* The branch sits under the workspace name and is clipped rather than wrapped;
+   the full value is in the tooltip. */
+.repo-branch {
+  padding: 0 var(--space-4) var(--space-2) var(--space-6);
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
+  color: var(--accent);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
 
 .repo-section.dragging { opacity: 0.45; }
 .repo-section.drop-target { box-shadow: inset 0 2px 0 var(--accent); }
@@ -231,29 +119,156 @@ button.watch-start { font-size: 10px; }
 /* Sits above the workspaces and holds every service that is up, wherever it
    lives. It is not draggable and has no repo of its own, so it deliberately does
    not reuse .repo-section. */
-.live-section { margin-bottom: 2px; }
+.live-section { margin-bottom: var(--space-1); }
 /* The first workspace below it keeps its own top border, which is the separator
    between the two — so this section must not add a second one. */
-.live-section:first-child .repo-head { border-top: 0; }
-.live-section .repo-head { cursor: pointer; }
-.live-section .repo-name { color: var(--green); }
-.live-section .repo-live {
-  color: var(--green);
-  border-color: var(--green);
-}
-.live-section.collapsed .service { display: none; }
+.live-section .repo-name,
+.live-section .repo-live { color: var(--green); }
 
-/* Which workspace a lifted row came from. Muted, because the service name is
-   what is being scanned for; the repo only disambiguates. */
-.svc-repo {
-  flex: 0 1 auto;
+/* ---------- service rows ---------- */
+
+/* A row is a group of sibling controls, never a button holding buttons: the main
+   button filters the log, the muted badge unmutes, the action slot starts, restarts
+   or stops it, and the pin keeps it at the top. Every control is always present, so the pointer crossing a row
+   changes a background colour and nothing else. */
+.service {
+  /* The containing block for the row's visually-hidden status text. Without it
+     those spans position against the page and push the document taller than the
+     window. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: var(--service-row-h);
+  padding: 0 var(--space-1) 0 var(--space-1);
+}
+.service:hover { background: var(--surface-hover); }
+.service.focused { background: var(--surface-selected); box-shadow: inset 3px 0 0 var(--accent); }
+.service.focused:hover { background: var(--surface-selected-hover); }
+
+.service .svc-main {
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 76px;
+  align-self: stretch;
+  /* Not the global control height: the row is 30px and its main button fills it. */
+  min-height: 0;
+  justify-content: flex-start;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  font-size: var(--fs-service);
+  line-height: 18px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-weight: 400;
+  text-align: left;
+}
+.service .svc-main:hover { background: transparent; }
+/* The name is what the eye is scanning for, so it is the last thing allowed to
+   shrink: everything beside it gives up its width first, down to 9 characters. */
+.service .name {
+  flex: 0 1 auto;
+  min-width: 9ch;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--muted);
-  font-size: 10px;
-  opacity: 0.8;
 }
-.svc-repo::after { content: '/'; opacity: 0.5; }
+.service.focused .name { font-weight: 600; }
+.service .svc-spacer { flex: 1 1 0; min-width: 0; }
+/* A fixed-width column, so memory figures line up down the list. */
+.service .mem {
+  flex: none;
+  width: 6ch;
+  text-align: right;
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+/* Pin is one direct toggle. Unpinned it fades in with the actions; pinned it stays
+   lit, so the row says it is pinned without a separate mark. */
+.svc-pin {
+  flex: none;
+  width: var(--svc-action);
+  min-height: var(--svc-action);
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.11s, background-color 0.11s, color 0.11s;
+}
+.svc-pin svg { width: 14px; height: 14px; }
+.service:hover .svc-pin,
+.service:focus-within .svc-pin,
+.svc-pin.on { opacity: 1; }
+.svc-pin.on { color: var(--amber); }
+.svc-pin.on svg { fill: currentColor; }
+.svc-pin:hover { color: var(--amber); background: var(--surface-hover); }
+@media (hover: none) { .svc-pin { opacity: 1; } }
+
+/* ---------- two-line rows, in Running ---------- */
+
+.service.two-line { min-height: calc(var(--service-row-h) + 14px); }
+.service.two-line .svc-main { flex-direction: column; align-items: stretch; justify-content: center; gap: 1px; padding-top: 3px; padding-bottom: 3px; }
+.svc-line { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+/* Indented to sit under the name, past the status dot. */
+.svc-sub {
+  padding-left: calc(8px + var(--space-2));
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
+  color: var(--text-secondary);
+}
+/* The alias is the one thing on this line that must stay readable: it does not
+   shrink, and the labels after it give up their room first. */
+.svc-alias { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); opacity: 0.8; }
+.svc-mem { flex: none; font-variant-numeric: tabular-nums; }
+.svc-mem::before { content: '\00B7'; margin-right: var(--space-2); opacity: 0.6; }
+.svc-labels { flex: 1 1 0; min-width: 0; display: flex; gap: var(--space-1); overflow: hidden; white-space: nowrap; }
+.svc-labels .badge { flex: none; }
+
+/* The direct actions. The slot is always there at its full width, so the name,
+   the badges and the memory column never move when a row is hovered; only its
+   buttons fade in. Opacity rather than display or visibility: they stay in the
+   tab order, and focusing one reveals the rest. */
+.svc-actions { flex: none; display: inline-flex; justify-content: flex-end; gap: 2px; width: calc(var(--svc-action) * 2 + 2px); }
+.svc-act {
+  width: var(--svc-action);
+  min-height: var(--svc-action);
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+  opacity: 0;
+  transition: opacity 0.11s, background-color 0.11s, color 0.11s, border-color 0.11s;
+}
+.svc-act svg { width: 15px; height: 15px; flex: none; }
+.service:hover .svc-act,
+.service:focus-within .svc-act { opacity: 1; }
+/* No hover on touch screens, so there the controls are simply always shown. */
+@media (hover: none) { .svc-act { opacity: 1; } }
+.svc-act:hover { color: var(--text); background: var(--surface-hover); border-color: var(--border-strong); }
+.svc-act-stop:hover { color: var(--red); border-color: var(--red); }
+.svc-act-start:hover { color: var(--green); border-color: var(--green); }
+
+.service .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-faint); flex: none; }
+.service .dot.running { background: var(--green); }
+.service .dot.stopping { background: var(--amber); }
+.service .dot.external { background: var(--accent); }
+.service .dot.failed { background: var(--red); }
+.service .dot.starting { background: var(--amber); animation: pulse 1s ease-in-out infinite; }
+.service .dot.queued { background: transparent; border: 1px solid var(--text-secondary); }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+/* Staleness used to tint the whole row amber, which made "your code moved on"
+   louder than a service that failed to boot — and a failure only gets a red dot.
+   Now that live services are lifted into their own short section at the top, the
+   badge alone is findable, and it carries the count the tint never could. */
+.badge.stale-badge { color: var(--amber); border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.badge.queued-badge { color: var(--text-secondary); }
+.badge.failed-badge { color: var(--red); border-color: var(--red); }
+.badge.watch-badge,
+.badge.live-badge,
+.badge.done-badge { color: var(--green); border-color: var(--green); }
+.badge.muted-badge { cursor: pointer; background: transparent; min-height: 0; padding: 0 6px; }
+.badge.muted-badge:hover { color: var(--accent); border-color: var(--accent); background: transparent; }

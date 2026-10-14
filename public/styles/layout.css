@@ -1,79 +1,157 @@
-/* The app frame: the three columns, the divider between them, and the scrollbars.
+/* The app frame: the three panes, the dividers between them, the toolbar and the
+   scrollbars.
 
    Order is load-bearing: rules here are overridden by later ones, so move a block
    between files only after checking nothing else styles the same selector. */
 
+/* ---------- frame ---------- */
+
+/* Placed by column, never by order: the sidebar and its divider disappear at
+   narrow widths, and the main pane must not slide into their tracks when they do. */
+.sidebar { grid-column: 1; }
+.sidebar-resizer { grid-column: 2; }
+.main { grid-column: 3; }
+
 /* ---------- main ---------- */
 
-.main { display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+/* A size container, so the toolbar and filter row can react to the room the log
+   pane really has rather than to the window. */
+.main {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
+  min-width: 0;
+  container: main / inline-size;
+}
+
+/* Pinned, because the filter row comes and goes: an unplaced child would slide
+   into the wrong track and leave the log pane in an `auto` row with no height. */
+.main > .toolbar { grid-row: 1; }
+.main > .filters-row { grid-row: 2; }
+.main > .split { grid-row: 3; }
 
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 12px;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border);
   background: var(--panel);
-  flex-wrap: nowrap;
-  /* Last resort at very narrow widths: scroll the bar rather than clip it. */
-  overflow-x: auto;
-  scrollbar-width: thin;
 }
-.toolbar::-webkit-scrollbar { height: 6px; }
-.toolbar > button { flex: none; }
-.toolbar input[type='text'] { flex: 0 1 210px; min-width: 110px; }
-.toolbar .grow { flex: 1 1 auto; min-width: 4px; }
-.toolbar .count { color: var(--muted); font-size: 11px; flex: none; white-space: nowrap; }
+.toolbar > * { flex: none; }
+.toolbar .search-box { flex: 1 1 360px; min-width: 220px; max-width: 360px; }
+.toolbar .search-box input { width: 100%; }
+.toolbar .grow { flex: 1 1 0; min-width: 0; }
+.levels { position: relative; }
 
-.split { display: grid; grid-template-columns: 1fr 0; overflow: hidden; }
-.split.detail-open { grid-template-columns: 1fr 480px; }
+/* Shown only when the sidebar can be collapsed. */
+.sidebar-toggle { display: none; }
 
-.logs { overflow-y: auto; position: relative; contain: strict; }
-.logs-spacer { position: relative; width: 100%; }
-.logs-window { position: absolute; top: 0; left: 0; right: 0; will-change: transform; }
-
-.row {
+/* A second row, present only while a service or trace filter is active. */
+.filters-row {
   display: flex;
-  gap: 10px;
-  padding: 0 12px;
-  height: 20px;
-  line-height: 20px;
-  white-space: nowrap;
-  overflow: hidden;
-  cursor: pointer;
-  border-left: 2px solid transparent;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  min-width: 0;
 }
-.row .msg { overflow: hidden; text-overflow: ellipsis; }
-.row:hover { background: var(--panel); }
-.row.selected { background: var(--panel-2); border-left-color: var(--accent); }
-.row .time { color: #5c6478; flex: none; }
-.row .svc { color: var(--violet); flex: none; min-width: 120px; }
-.row .lvl { flex: none; min-width: 42px; text-transform: uppercase; font-size: 11px; }
-.row .ctx { color: var(--muted); flex: none; }
-.row .msg { flex: 1; }
+.filters-row[hidden] { display: none; }
+.filters-row .filters-label { flex: none; color: var(--text-secondary); font-size: var(--fs-secondary); line-height: var(--lh-secondary); }
+.filters-row .grow { flex: 1 1 0; min-width: 0; }
 
-.lvl.error, .lvl.fatal { color: var(--red); }
-.lvl.warn { color: var(--amber); }
-.lvl.info { color: var(--green); }
-.lvl.debug, .lvl.trace { color: #6b7385; }
-.lvl.raw { color: #4d5567; }
+.chips { display: flex; align-items: center; gap: var(--space-2); flex: 1 1 0; min-width: 0; overflow: hidden; }
+/* A chip never grows past 220px; a long name is cut with an ellipsis, and the
+   whole of it is in the tooltip and the accessible name. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 0 auto;
+  max-width: 220px;
+  min-width: 0;
+  min-height: 24px;
+  padding: 0 var(--space-2);
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
+  background: var(--surface-selected);
+  border: 1px solid var(--accent);
+  color: var(--text);
+  border-radius: var(--radius-sm);
+}
+.chip .chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip:hover { background: var(--surface-selected-hover); }
+/* The trace may be the only reason almost nothing is showing, so it is never
+   folded away; if it is too long it shrinks instead. */
+.chip.trace { border-color: var(--violet); flex: 0 1 auto; min-width: 96px; }
+.chip.more-chip { background: transparent; border-color: var(--border-strong); color: var(--text-secondary); }
+.chip.more-chip:hover { color: var(--text); }
+#focusMenu { padding: var(--space-2); gap: var(--space-2); min-width: 260px; }
+#focusMenu .chip { max-width: none; min-height: var(--control-h); font-size: var(--fs-body); padding: 0 var(--space-3); justify-content: space-between; }
 
-.row.error, .row.fatal { background: rgba(248, 81, 73, 0.07); }
+/* ---------- panes ---------- */
 
-/* ---------- resizable detail pane ---------- */
+/* Grid tracks: logs | divider | inspector. The inspector track is 0 until a line
+   is open, and in overlay mode it never takes room from the logs at all. */
+.split {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 0 0;
+  overflow: hidden;
+  min-height: 0;
+}
+.split.detail-open[data-inspector='side'] { grid-template-columns: minmax(0, 1fr) 1px var(--detail-width, 480px); }
 
-.split.detail-open { grid-template-columns: 1fr 5px var(--detail-width, 480px); }
-.split { grid-template-columns: 1fr 0 0; }
+.logs-wrap {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  /* Lets the column definition use the pane's own width, so the header and the
+     rows resolve to the same pixels whatever scrollbar either carries. */
+  container: logs / inline-size;
+}
+/* Every child is pinned to its row. With the divider hidden an unplaced child
+   would auto-place into the wrong track, and `contain: strict` on the list gives
+   that track nothing to size from — the pane collapses to zero height while the
+   counter still says lines are shown. */
+.logs-wrap > .hidden-bar { grid-row: 1; }
+.logs-wrap > .log-head { grid-row: 2; }
+.logs-wrap > .logs { grid-row: 3; }
+.logs-wrap > .log-status { grid-row: 4; }
 
-.resizer { display: none; cursor: col-resize; background: var(--border); }
-.resizer:hover { background: var(--accent); }
-.split.detail-open .resizer { display: block; }
+/* ---------- dividers ---------- */
+
+/* 1px to look at, 8px to grab. The extra width is a pseudo-element so the grid
+   track stays 1px. */
+.sidebar-resizer,
+.resizer {
+  position: relative;
+  background: var(--border);
+  cursor: col-resize;
+  z-index: 5;
+}
+.sidebar-resizer::before,
+.resizer::before { content: ''; position: absolute; inset: 0 -4px; }
+.sidebar-resizer:hover,
+.resizer:hover,
+.sidebar-resizer.dragging,
+.resizer.dragging,
+.sidebar-resizer:focus-visible,
+.resizer:focus-visible { background: var(--accent); }
+.separator:focus-visible { outline: 0; }
+.resizer { display: none; }
+.split.detail-open[data-inspector='side'] .resizer { display: block; }
 
 /* ---------- scrollbars ---------- */
 
 * {
   scrollbar-width: thin;
-  scrollbar-color: var(--border) transparent;
+  scrollbar-color: var(--border-strong) transparent;
 }
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -81,27 +159,35 @@
 ::-webkit-scrollbar-corner { background: transparent; }
 
 ::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: var(--border-strong);
   border: 2px solid transparent;
   background-clip: content-box;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
-::-webkit-scrollbar-thumb:hover { background: var(--muted); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); background-clip: content-box; }
 ::-webkit-scrollbar-thumb:active { background: var(--accent); background-clip: content-box; }
 
 /* The snippet's horizontal bar sits inside a small box; keep it slimmer. */
 .snippet::-webkit-scrollbar { height: 8px; }
 
-.badge.foreign { color: var(--muted); border-color: var(--muted); }
+/* ---------- narrow windows ---------- */
 
-.row .repeat {
-  flex: none;
-  color: var(--muted);
-  background: var(--panel-2);
-  border-radius: 8px;
-  padding: 0 6px;
-  font-size: 10px;
-  align-self: center;
-  line-height: 15px;
+/* The same two breakpoints live in layout.js (COLLAPSE_BELOW, OVERLAY_BELOW). */
+@media (max-width: 1099px) {
+  .sidebar-toggle { display: inline-flex; }
+  body[data-sidebar='closed'] { grid-template-columns: 0 0 minmax(0, 1fr); }
+  body[data-sidebar='closed'] .sidebar,
+  body[data-sidebar='closed'] .sidebar-resizer { display: none; }
 }
-.chip.trace { border-color: var(--violet); color: var(--violet); background: rgba(163, 113, 247, 0.16); }
+@media (max-width: 799px) {
+  body { grid-template-columns: 0 0 minmax(0, 1fr); }
+  .sidebar-resizer { display: none; }
+  body[data-sidebar='open'] .sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(var(--sidebar-width, 304px), 88vw);
+    z-index: 40;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.5);
+  }
+  .toolbar .search-box { max-width: none; }
+}

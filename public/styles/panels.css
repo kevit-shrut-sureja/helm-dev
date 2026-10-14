@@ -23,104 +23,83 @@
   max-width: calc(100vw - 40px);
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 22px 24px;
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
 }
-.first-run-card h2 { margin: 0 0 8px; font-size: 16px; }
-.first-run-card p { color: var(--muted); line-height: 1.6; margin: 0 0 18px; }
+.first-run-card h2 { margin: 0 0 var(--space-2); font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 600; }
+.first-run-card p { color: var(--text-secondary); line-height: var(--lh-body); margin: 0 0 var(--space-4); }
 .first-run-card code { color: var(--accent); }
-.first-run-card label { display: block; margin-bottom: 14px; }
-.first-run-card label > span { display: block; margin-bottom: 5px; font-size: 12px; }
-.first-run-card label small { color: var(--muted); font-weight: 400; }
+.first-run-card label { display: block; margin-bottom: var(--space-4); }
+.first-run-card label > span { display: block; margin-bottom: var(--space-1); font-size: var(--fs-secondary); line-height: var(--lh-secondary); font-weight: 500; }
+.first-run-card label small { color: var(--text-secondary); font-weight: 400; }
 .first-run-card input { width: 100%; }
-.first-run-actions { display: flex; align-items: center; gap: 10px; }
-.first-run-error { color: var(--red); font-size: 11px; line-height: 1.5; }
-
-/* ---------- first run ---------- */
-
-/* A class rule with `display` outranks the browser's [hidden] rule, so the
-   hidden state has to be restated here or the panel covers the app. */
-.first-run[hidden] { display: none; }
-
-.first-run {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg);
-}
-.first-run-card {
-  width: 520px;
-  max-width: calc(100vw - 40px);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 22px 24px;
-}
-.first-run-card h2 { margin: 0 0 8px; font-size: 16px; }
-.first-run-card p { color: var(--muted); line-height: 1.6; margin: 0 0 18px; }
-.first-run-card code { color: var(--accent); }
-.first-run-card label { display: block; margin-bottom: 14px; }
-.first-run-card label > span { display: block; margin-bottom: 5px; font-size: 12px; }
-.first-run-card label small { color: var(--muted); font-weight: 400; }
-.first-run-card input { width: 100%; }
-.first-run-actions { display: flex; align-items: center; gap: 10px; }
-.first-run-error { color: var(--red); font-size: 11px; line-height: 1.5; }
+.first-run-actions { display: flex; align-items: center; gap: var(--space-3); }
+.first-run-error { color: var(--red); font-size: var(--fs-secondary); line-height: var(--lh-secondary); }
 
 /* ---------- panels (settings, shortcuts) ---------- */
 
+/* Centred, with the page dimmed behind it by an oversized shadow — no backdrop
+   element to manage, and a click on the dimmed area still counts as "outside". */
 .panel {
   position: fixed;
-  top: 52px;
-  left: 14px;
-  width: 360px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 600px;
   max-width: calc(100vw - 28px);
-  max-height: calc(100vh - 80px);
+  max-height: calc(100vh - 60px);
   z-index: 30;
   display: flex;
   flex-direction: column;
   background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 0 0 100vmax rgba(2, 4, 10, 0.62), 0 24px 70px rgba(0, 0, 0, 0.6);
 }
 .panel[hidden] { display: none; }
 
 .panel header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 11px 14px;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--border);
 }
+.panel header strong { font-size: var(--fs-title); line-height: var(--lh-title); font-weight: 600; }
 .panel header .grow { flex: 1; }
 
-.panel-body { padding: 4px 14px 14px; overflow-y: auto; }
+.panel-body { padding: var(--space-2) var(--space-6) var(--space-6); overflow-y: auto; }
 
 .panel-body h4 {
-  margin: 16px 0 8px;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--muted);
+  margin: var(--space-6) 0 var(--space-2);
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
+  font-weight: 600;
+  color: var(--text-secondary);
 }
-.panel-body h4:first-child { border-top: 0; padding-top: 0; margin-top: 12px; }
+.panel-body h4:first-child { margin-top: var(--space-4); }
 
-.panel-note { color: var(--muted); font-size: 11px; line-height: 1.6; margin: 12px 0 0; }
+.panel-note { color: var(--text-secondary); font-size: var(--fs-secondary); line-height: var(--lh-secondary); margin: var(--space-3) 0 0; }
 .panel-note code { color: var(--accent); }
 .panel-error { color: var(--red); }
 
-.panel-body small { display: block; color: var(--muted); font-size: 10.5px; line-height: 1.5; margin-top: 5px; }
+.panel-body small { display: block; color: var(--text-secondary); font-size: var(--fs-secondary); line-height: var(--lh-secondary); margin-top: var(--space-2); }
 
-.setting { display: block; margin-bottom: 12px; }
-.setting > span { display: block; margin-bottom: 6px; }
+/* Each setting is a card, so a long panel reads as a list of things rather than a wall. */
+.setting {
+  display: block;
+  margin-bottom: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+.setting > span { display: block; margin-bottom: var(--space-2); font-weight: 500; }
 .setting input[type='range'] { width: 100%; accent-color: var(--accent); }
-.setting.checkbox { display: grid; grid-template-columns: auto 1fr; gap: 3px 8px; align-items: center; }
+.setting.checkbox { display: grid; grid-template-columns: auto 1fr; gap: var(--space-1) var(--space-3); align-items: center; }
+.setting.checkbox > span { margin: 0; }
 .setting.checkbox small { grid-column: 2; margin-top: 0; }
+.setting.checkbox input { accent-color: var(--accent); width: 16px; height: 16px; }
 
 /* ---------- stale server notice ---------- */
 
@@ -134,13 +113,50 @@
   align-items: center;
   gap: 10px;
   max-width: 720px;
-  padding: 10px 14px;
+  padding: var(--space-3) var(--space-4);
   background: var(--panel);
   border: 1px solid var(--amber);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-  font-size: 12px;
+  font-size: var(--fs-secondary);
+  line-height: var(--lh-secondary);
 }
 .stale-server strong { color: var(--amber); }
-.stale-server span { color: var(--muted); }
+.stale-server span { color: var(--text-secondary); }
 .stale-server code { color: var(--accent); }
+
+/* ---------- selects inside panels ---------- */
+
+.panel-body select { width: 100%; }
+
+/* ---------- workspace list ---------- */
+
+.workspace-list { margin-bottom: var(--space-2); }
+.workspace-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid var(--border);
+}
+.workspace-row:last-child { border-bottom: 0; }
+.workspace-row .workspace-name { flex: none; font-weight: 600; min-width: 80px; }
+.workspace-row .workspace-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-size: var(--fs-secondary);
+}
+.add-repo { display: grid; grid-template-columns: 1fr auto; gap: var(--space-2); margin-top: var(--space-3); }
+.add-repo input { width: 100%; }
+.add-repo input:first-child { grid-column: 1 / -1; }
+
+/* ---------- shortcuts ---------- */
+
+.shortcuts { width: calc(100% - 48px); border-collapse: collapse; margin: var(--space-4) var(--space-6) var(--space-1); }
+.shortcuts td { padding: var(--space-1) 0; vertical-align: top; }
+.shortcuts td:first-child { width: 72px; }
+.shortcuts td:last-child { color: var(--text-secondary); }
