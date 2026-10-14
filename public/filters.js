@@ -3,6 +3,7 @@
 
 import { FRAMEWORK_CONTEXTS, el, escapeHtml, key, state, writePref } from './core.js';
 import { renderLogs } from './logs.js';
+import { closeMenu, isMenuOpen, openMenu } from './menus.js';
 import { renderServices } from './services.js';
 
 // Ids worth following a piece of work by. `userId` and `reqId` are the ones that
@@ -103,55 +104,138 @@ function valueContains(value, needle) {
 }
 
 /**
- * Renders the chips showing which services the log pane is focused on.
+ * Renders the scope row: a chip per scoped service and for an active trace, as
+ * many as fit, then "+N more" for the rest. The row exists only while a scope
+ * does, so an unscoped view has one toolbar row.
  */
 export function renderFocus() {
+  const row = document.getElementById('filtersRow');
   const chips = document.getElementById('focusChips');
-  const parts = [...state.focus].map(
-    (name) => `<span class="chip" data-chip="${escapeHtml(name)}">${escapeHtml(name)} &times;</span>`,
-  );
-  if (state.trace !== null) {
+  const menu = document.getElementById('focusMenu');
+  const trace = state.trace;
+  const parts = [];
+  // The trace goes first and is never folded away: it can be the whole reason
+  // almost nothing is showing.
+  if (trace !== null) {
+    const full = `${trace.key} ${trace.value}`;
     parts.push(
-      `<span class="chip trace" data-chip-trace="1">${escapeHtml(state.trace.key)} ${escapeHtml(state.trace.value.slice(0, 10))} &times;</span>`,
+      `<button class="chip trace" data-chip-trace="1" aria-label="Remove trace ${escapeHtml(full)}"
+        title="Trace ${escapeHtml(full)} — remove">
+        <span class="chip-label">${escapeHtml(trace.key)} ${escapeHtml(trace.value)}</span><span aria-hidden="true">&times;</span></button>`,
     );
   }
+  for (const name of state.focus) {
+    parts.push(
+      `<button class="chip" data-chip="${escapeHtml(name)}" aria-label="Remove service filter ${escapeHtml(name)}"
+        title="${escapeHtml(name)} — remove">
+        <span class="chip-label">${escapeHtml(name)}</span><span aria-hidden="true">&times;</span></button>`,
+    );
+  }
+  row.hidden = parts.length === 0;
   if (parts.length === 0) {
     chips.innerHTML = '';
+    menu.innerHTML = '';
+    closeMenu();
     return;
   }
-  // More than two chips would crowd out the filter box, so they fold into one
-  // button that opens the full list.
-  if (parts.length > 2) {
-    chips.innerHTML = `<button id="focusMore" class="chip">${parts.length} filters &#9662;</button><button id="clearFocus" class="mini" title="clear the service filter and show every log again">clear all</button><div id="focusMenu" class="menu" hidden>${parts.join('')}</div>`;
-    return;
-  }
-  chips.innerHTML = `<span class="chip-scroll">${parts.join('')}</span><button id="clearFocus" class="mini" title="clear the service filter and show every log again">clear all</button>`;
+  closeMenu();
+  chips.innerHTML = `${parts.join('')}<button id="focusMore" class="chip more-chip" aria-haspopup="true"
+    aria-expanded="false" aria-controls="focusMenu" hidden></button>`;
+  menu.innerHTML = parts.join('');
+  document.getElementById('focusMore').addEventListener('click', toggleMore);
+  layoutChips();
 }
 
-document.getElementById('focusChips').addEventListener('click', (event) => {
-  if (event.target.id === 'focusMore') {
-    const menu = document.getElementById('focusMenu');
-    menu.hidden = !menu.hidden;
-    const box = event.target.getBoundingClientRect();
-    menu.style.left = `${box.left}px`;
-    menu.style.top = `${box.bottom + 4}px`;
-    return;
+let chipRegionWidth = 0;
+
+/**
+ * Decides how many chips fit in the row and folds the rest into "+N more". It
+ * measures real rendered widths, so it runs when the filters change or the row is
+ * resized — never per log line. The trace chip is placed first and keeps its
+ * place; a trace too long for the row shrinks and ellipsizes instead.
+ */
+function layoutChips() {
+  const chips = document.getElementById('focusChips');
+  const more = document.getElementById('focusMore');
+  if (!more) return;
+  const all = [...chips.querySelectorAll('.chip:not(.more-chip)')];
+  // Everything is shown first so it can be measured, then the overflow is hidden.
+  for (const chip of all) chip.hidden = false;
+  more.hidden = true;
+  const room = chips.clientWidth;
+  if (room === 0) return;
+  const gap = Number.parseFloat(getComputedStyle(chips).columnGap) || 0;
+  const widths = all.map((chip) => chip.offsetWidth);
+  const total = widths.reduce((sum, width) => sum + width + gap, -gap);
+  if (total <= room) return;
+
+  // Room for the "+N more" button is held back before any chip is counted.
+  let shown = 0;
+  let used = 0;
+  more.textContent = `+${all.length} more`;
+  more.hidden = false;
+  const reserve = more.offsetWidth + gap;
+  for (const [index, width] of widths.entries()) {
+    const next = used + (index === 0 ? 0 : gap) + width;
+    // The first chip always stays: a row of nothing but "+N more" says nothing.
+    if (index > 0 && next + reserve > room) break;
+    used = next;
+    shown += 1;
   }
-  const chip = event.target.dataset?.chip;
-  if (chip) state.focus.delete(chip);
-  if (event.target.dataset?.chipTrace) state.trace = null;
-  if (event.target.id === 'clearFocus') {
-    state.focus.clear();
-    state.trace = null;
-  }
+  all.forEach((chip, index) => {
+    chip.hidden = index >= shown;
+  });
+  const hiddenCount = all.length - shown;
+  more.hidden = hiddenCount === 0;
+  more.textContent = `+${hiddenCount} more`;
+  more.title = `${hiddenCount} more active filter${hiddenCount === 1 ? '' : 's'}`;
+  more.setAttribute('aria-label', `${hiddenCount} more active filters. Open the list.`);
+}
+
+/**
+ * Opens or closes the full list of scoped services.
+ * @param event - the click on "+N more"
+ */
+function toggleMore(event) {
+  const menu = document.getElementById('focusMenu');
+  if (isMenuOpen(menu)) closeMenu(true);
+  else openMenu(menu, event.currentTarget);
+}
+
+// The chip region's width is decided by the window and the sidebar, so it is
+// watched rather than polled; the callback bails unless the width really changed.
+new ResizeObserver(() => {
+  const width = document.getElementById('focusChips').clientWidth;
+  if (width === chipRegionWidth) return;
+  chipRegionWidth = width;
+  layoutChips();
+}).observe(document.getElementById('focusChips'));
+
+/**
+ * Applies a click on a filter chip, wherever the chip is shown.
+ * @param event - the click
+ */
+function onChipClick(event) {
+  const chip = event.target.closest('.chip');
+  if (!chip) return;
+  if (chip.dataset.chip) state.focus.delete(chip.dataset.chip);
+  if (chip.dataset.chipTrace) state.trace = null;
+  writePref('focus', [...state.focus]);
   renderServices();
   renderFocus();
   renderLogs();
-});
+}
 
-document.addEventListener('click', (event) => {
-  const menu = document.getElementById('focusMenu');
-  if (menu && !menu.hidden && !event.target.closest('#focusChips')) menu.hidden = true;
+document.getElementById('focusChips').addEventListener('click', onChipClick);
+document.getElementById('focusMenu').addEventListener('click', onChipClick);
+
+document.getElementById('clearFocus').addEventListener('click', () => {
+  state.focus.clear();
+  state.trace = null;
+  writePref('focus', []);
+  renderServices();
+  renderFocus();
+  renderLogs();
 });
 
 const LEVELS = ['error', 'warn', 'info', 'debug', 'raw'];
@@ -164,18 +248,14 @@ const levelMenu = document.getElementById('levelMenu');
 export function renderLevels() {
   const on = LEVELS.filter((level) => state.levels.has(level));
   for (const box of levelMenu.querySelectorAll('input')) box.checked = state.levels.has(box.dataset.level);
-  const label = on.length === LEVELS.length ? 'all' : on.length === 0 ? 'none' : on.join(' ');
-  levelBtn.textContent = `levels: ${label} \u25BE`;
+  const label = on.length === LEVELS.length ? 'All' : on.length === 0 ? 'None' : on.join(' ');
+  levelBtn.textContent = `Levels: ${label} \u25BE`;
   levelBtn.classList.toggle('on', on.length !== LEVELS.length);
 }
 
 levelBtn.addEventListener('click', () => {
-  levelMenu.hidden = !levelMenu.hidden;
-  if (levelMenu.hidden) return;
-  // Fixed rather than absolute: the toolbar scrolls sideways and would clip it.
-  const box = levelBtn.getBoundingClientRect();
-  levelMenu.style.left = `${box.left}px`;
-  levelMenu.style.top = `${box.bottom + 4}px`;
+  if (isMenuOpen(levelMenu)) closeMenu(true);
+  else openMenu(levelMenu, levelBtn);
 });
 
 levelMenu.addEventListener('change', (event) => {
@@ -185,10 +265,6 @@ levelMenu.addEventListener('change', (event) => {
   writePref('hiddenLevels', LEVELS.filter((l) => !state.levels.has(l)));
   renderLevels();
   renderLogs();
-});
-
-document.addEventListener('click', (event) => {
-  if (!levelMenu.hidden && !event.target.closest('.levels')) levelMenu.hidden = true;
 });
 
 let searchTimer = null;
@@ -203,10 +279,13 @@ el.search.addEventListener('input', () => {
 export const noiseButton = document.getElementById('noise');
 
 /**
- * Applies the noise setting to the button and the log pane.
+ * Applies the noise setting to the button and the log pane. The button reads as
+ * pressed while noise is being hidden, which is what the filter actually does.
  */
 export function applyNoise() {
-  noiseButton.classList.toggle('on', state.showNoise);
+  const hiding = !state.showNoise;
+  noiseButton.classList.toggle('on', hiding);
+  noiseButton.setAttribute('aria-pressed', String(hiding));
   writePref('showNoise', state.showNoise);
   renderLogs();
 }

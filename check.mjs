@@ -18,7 +18,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const KEYWORDS = new Set(['if', 'for', 'while', 'switch', 'catch', 'return', 'typeof', 'await', 'new', 'function', 'else', 'do', 'of', 'in', 'case', 'void', 'delete', 'yield', 'async', 'get', 'set']);
 const GLOBALS = new Set([
   'fetch', 'confirm', 'alert', 'prompt', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval',
-  'requestAnimationFrame', 'Number', 'String', 'Boolean', 'Math', 'JSON', 'Date', 'Array', 'Object', 'Set', 'Map',
+  'requestAnimationFrame', 'getComputedStyle', 'ResizeObserver', 'MutationObserver', 'Number', 'String', 'Boolean', 'Math', 'JSON', 'Date', 'Array', 'Object', 'Set', 'Map',
   'RegExp', 'Error', 'parseInt', 'parseFloat', 'isNaN', 'EventSource', 'URL', 'URLSearchParams', 'localStorage',
   'console', 'document', 'window', 'navigator', 'btoa', 'Uint8Array', 'Option', 'translateY', 'rgba', 'url', 'all', 'file', 'line', 'not',
 ]);

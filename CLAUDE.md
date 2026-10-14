@@ -62,8 +62,9 @@ public/filters.js   what reaches the log pane, and the chips that say so
 public/logs.js      the virtualised log pane
 public/detail.js    the pane that opens on a line
 public/panels.js    settings, help, and closing them on a click away
+public/menus.js     popup menus: one open at a time, keyboard, Escape, outside click
 public/report.js    the bug report form
-public/layout.js    theme and the draggable dividers
+public/layout.js    theme, density, and how the three panes share the window
 public/styles/      one stylesheet per area, loaded in the order index.html lists
 ```
 
@@ -176,6 +177,41 @@ defers them, so the DOM is ready when any of them runs.
   only in `platform` was being credited to `platform-apis`. Template patterns with fewer
   than 6 fixed characters are dropped on load: `${code} : ${text}` matches every message
   here that has a colon.
+- **The log row height lives in CSS (`--log-row-height`) and is read once.** `logs.js`
+  caches it at start and again when the density changes; it never measures a row or
+  calls `getComputedStyle` per line. A density switch anchors on the top record's
+  sequence number plus the *fraction* of its row scrolled past, so the same line stays
+  put at a different height; while following, it stays on the newest line instead.
+- **Saved pane widths are choices, not results.** `layout.js` clamps them against the
+  window on every pass and never writes the clamped value back, so a narrow window
+  does not forget a wide setting. The inspector docks only while the logs keep 560px,
+  and floats over them (as a modal dialog) otherwise.
+- **The log header and the rows share one column definition, and both own their grid
+  in the same font.** `ch` is measured in the font of the element that owns the grid;
+  with different fonts the time column is a different width in each and every column
+  after it drifts. The service column uses `cqw`, not `%`, for the same reason: only
+  one of the two boxes carries a scrollbar.
+- **Grid children are placed by row/column, never by order.** The filter row, the
+  restore bar, the sidebar and its divider all come and go; an unplaced child slides
+  into the wrong track, and `.logs` (`contain: strict`) then has no height to size from.
+- **A service row is sibling controls, not a button holding buttons.** The row's main
+  button toggles the log filter; the muted badge (which unmutes), the direct
+  Start/Restart/Stop slot (plus Start-with-live-reload on a stopped frontend) and the
+  Pin toggle are beside it. There is no overflow menu: it had shrunk to one item. The action slot is always
+  laid out at full width and only fades in (opacity, never `display`/`visibility`), so
+  hover and keyboard focus reveal it without moving the name. `renderServices` rewrites
+  the whole list, so it records which control had focus and puts it back afterwards.
+  Rows in Running take two lines — name, then worktree alias, memory and any
+  exceptional label — and never repeat the branch, which is under the workspace heading.
+- **`.service` is `position: relative`.** Its visually-hidden status text is absolutely
+  positioned; with no positioned ancestor those spans resolve against the page and
+  made the document taller than the window, with a second scrollbar.
+- **Only one of Settings, Help and Report is open, and the page behind is `inert`.**
+  Everything opens and closes through `openPanel`/`closePanel`, which also own focus
+  return; setting `.hidden` directly stacks dialogs and loses focus.
+- **The scope row's chips are fitted by measuring**, on filter change and when the row
+  resizes — never per log line. The trace chip is placed first and is never folded.
+
 - **The page resyncs when its event stream reconnects.** `EventSource` reconnects
   silently and nothing replays what it missed, so a service that came up meanwhile stayed
   "starting" until a refresh.

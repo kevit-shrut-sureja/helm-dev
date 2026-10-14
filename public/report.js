@@ -2,6 +2,7 @@
 // helm-dev will add on its own, and hand it to the server to file as an issue.
 
 import { post, state } from './core.js';
+import { closePanel, openPanel } from './panels.js';
 
 const MAX_IMAGES = 5;
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -21,6 +22,16 @@ const meta = document.getElementById('reportMeta');
 const preview = document.getElementById('reportPreview');
 
 let images = [];
+// Sending needs a destination that answered and nothing already in flight.
+let targetReady = false;
+let sending = false;
+
+/**
+ * Enables Send only when a report could actually be filed right now.
+ */
+function syncSend() {
+  sendButton.disabled = !targetReady || sending;
+}
 
 /**
  * Describes the log pane's filters, so a report says what the reporter was
@@ -92,19 +103,38 @@ async function addImage(file) {
  * sent from this machine — before anyone has written a paragraph.
  */
 async function loadTarget() {
-  const info = await (await fetch('/api/report')).json();
   const note = document.getElementById('reportTarget');
-  if (category.options.length === 0) {
+  const retry = document.getElementById('reportRetry');
+  targetReady = false;
+  retry.hidden = true;
+  syncSend();
+  note.classList.remove('panel-error');
+  note.textContent = 'Checking where reports go…';
+  let info;
+  try {
+    const response = await fetch('/api/report');
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    info = await response.json();
+  } catch {
+    // What was typed stays; only the ability to send is withdrawn until helm-dev
+    // answers, because a click that cannot succeed is worse than a disabled one.
+    note.classList.add('panel-error');
+    note.textContent = 'Could not reach helm-dev to check where reports go, so sending is off for now.';
+    retry.hidden = false;
+    if (category.options.length === 0) category.add(new Option('Unavailable — helm-dev did not answer', '', true, true));
+    return;
+  }
+  if (category.options.length === 0 || category.options[0].value === '') {
+    category.replaceChildren();
     for (const name of info.categories ?? []) category.add(new Option(name, name));
   }
   if (!info.ready) {
     note.textContent = info.reason;
     note.classList.add('panel-error');
-    sendButton.disabled = true;
     return;
   }
-  note.classList.remove('panel-error');
-  sendButton.disabled = false;
+  targetReady = true;
+  syncSend();
   note.textContent =
     `This files an issue in ${info.repo} as your GitHub account, through the gh tool.` +
     `${info.visibility === 'public' ? ' That repository is public, so anyone can read the report and its screenshots — leave out anything private.' : ''}`;
@@ -120,16 +150,16 @@ async function loadPreview() {
 }
 
 /**
- * Opens the form, fresh.
+ * Opens the form. Anything already typed is kept, so switching away to settings
+ * and back does not cost a half-written report.
+ * @param opener - the control that was pressed, to return focus to on close
  */
-function openReport() {
+function openReport(opener) {
   form.hidden = false;
   done.hidden = true;
   errorLine.textContent = '';
-  panel.hidden = false;
-  loadTarget().catch(() => {
-    document.getElementById('reportTarget').textContent = 'Could not reach helm-dev to check where reports go.';
-  });
+  openPanel(panel, opener);
+  loadTarget();
   if (meta.open) loadPreview().catch(() => undefined);
   title.focus();
 }
@@ -139,7 +169,8 @@ function openReport() {
  */
 async function sendReport() {
   errorLine.textContent = '';
-  sendButton.disabled = true;
+  sending = true;
+  syncSend();
   busy.hidden = false;
   try {
     const result = await post('/api/report', {
@@ -167,19 +198,20 @@ async function sendReport() {
   } catch (error) {
     errorLine.textContent = `Could not send: ${error.message}`;
   } finally {
-    sendButton.disabled = false;
+    sending = false;
+    syncSend();
     busy.hidden = true;
   }
 }
 
-document.getElementById('reportBtn').addEventListener('click', () => {
-  if (panel.hidden) openReport();
-  else panel.hidden = true;
+const reportButton = document.getElementById('reportBtn');
+reportButton.addEventListener('click', () => {
+  if (panel.hidden) openReport(reportButton);
+  else closePanel(panel);
 });
-document.getElementById('reportClose').addEventListener('click', () => {
-  panel.hidden = true;
-});
-document.getElementById('reportAnother').addEventListener('click', openReport);
+document.getElementById('reportClose').addEventListener('click', () => closePanel(panel));
+document.getElementById('reportAnother').addEventListener('click', () => openReport());
+document.getElementById('reportRetry').addEventListener('click', () => loadTarget());
 document.getElementById('reportAddShot').addEventListener('click', () => fileInput.click());
 sendButton.addEventListener('click', () => sendReport());
 
@@ -201,15 +233,3 @@ meta.addEventListener('toggle', () => {
 category.addEventListener('change', () => {
   if (meta.open) loadPreview().catch(() => undefined);
 });
-
-// A report is a form someone is mid-way through, so a click elsewhere must not
-// close it — only the button, the cross, or Escape.
-document.addEventListener(
-  'keydown',
-  (event) => {
-    if (event.key !== 'Escape' || panel.hidden) return;
-    panel.hidden = true;
-    event.stopPropagation();
-  },
-  true,
-);

@@ -3,141 +3,119 @@
    Order is load-bearing: rules here are overridden by later ones, so move a block
    between files only after checking nothing else styles the same selector. */
 
-/* ---------- detail ---------- */
-
 .detail {
-  border-left: 1px solid var(--border);
+  border-left: 0;
   background: var(--panel);
   overflow-y: auto;
   display: none;
+  min-width: 0;
+  font-size: var(--fs-body);
 }
 .split.detail-open .detail { display: block; }
+
+/* Not enough room beside the logs: the inspector floats over their right edge
+   rather than squeezing them. layout.js decides; this only draws it. */
+.split.detail-open[data-inspector='overlay'] .detail {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(var(--detail-width, 480px), 100%);
+  z-index: 20;
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+/* ---------- header ---------- */
 
 .detail header {
   position: sticky;
   top: 0;
   z-index: 1;
   background: var(--panel);
-  padding: 14px 16px 10px;
+  padding: var(--space-3) var(--space-4);
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
   align-items: center;
+  border-bottom: 1px solid var(--border);
 }
-.detail header .grow { flex: 1; }
+.detail header .grow { flex: 1 1 0; min-width: 0; }
+.dh-time { font-family: var(--mono); font-size: 13px; line-height: 20px; font-weight: 600; flex: none; }
+.dh-svc { color: var(--text-secondary); font-family: var(--mono); font-size: 13px; line-height: 20px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.detail section { padding: 10px 16px 6px; }
-.detail h4 { margin: 0 0 8px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.9px; }
-.detail pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); padding: var(--space-3) var(--space-4) 0; }
+.detail-actions button { min-width: 112px; }
+/* Copy feedback swaps the label without moving anything: the width is fixed by
+   detail.js before the text changes. */
+.detail-actions button.failed { color: var(--red); border-color: var(--red); }
 
-.origin { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.path {
-  color: var(--accent);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-}
-.path:hover { color: var(--text); text-decoration-thickness: 2px; }
-.badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); color: var(--muted); }
-.badge.exact { color: var(--green); border-color: var(--green); }
-.badge.pattern { color: var(--accent); border-color: var(--accent); }
-.badge.ambiguous { color: var(--amber); border-color: var(--amber); }
-.badge.none { color: var(--red); border-color: var(--red); }
+/* ---------- sections ---------- */
 
-.snippet { background: var(--bg); border: 1px solid var(--border); border-radius: 5px; overflow-x: auto; }
-.snippet div { padding: 0 8px; white-space: pre; }
-.snippet div.hit { background: rgba(90, 169, 255, 0.14); }
-.snippet .ln { color: #4d5567; display: inline-block; width: 44px; user-select: none; }
-
-/* ---------- detail pane ---------- */
-
-/* These rules were lost in a block rewrite of the settings panel; the markup
-   below kept emitting the classes, so the pane degraded to bare block flow. */
-
-.section-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.detail section { padding: 0 var(--space-4); margin-top: 20px; }
+.detail section:last-of-type { padding-bottom: var(--space-4); }
+.detail h4 { margin: 0 0 var(--space-2); font-size: var(--fs-secondary); line-height: var(--lh-secondary); font-weight: 600; color: var(--text-secondary); }
+.section-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-2); }
 .section-head h4 { margin: 0; }
 /* Copy sits at the right edge, in line with the heading, so the buttons in the
    pane form one column instead of interrupting the text they belong to. */
 .section-head .mini { margin-left: auto; }
 
-.exact-time { font-size: 13px; }
-.exact-time .iso { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
-
-.id-row { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
-.id-key { color: var(--muted); flex: none; min-width: 70px; font-size: 11px; }
-.id-val {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--accent);
-  user-select: all;
-}
-
-.candidates { margin-top: 10px; border-top: 1px solid var(--border); padding-top: 8px; }
-.candidates p { color: var(--muted); font-size: 11px; line-height: 1.5; margin: 0 0 6px; }
-.candidate { margin-bottom: 4px; display: flex; gap: 8px; align-items: baseline; }
-.candidate .path { flex: 1 1 auto; min-width: 0; word-break: break-all; }
-.candidate .cand-class { color: var(--muted); font-size: 11px; }
-
-.section-title-row { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-.section-title-row button { text-transform: none; letter-spacing: 0; }
-.section-title-row button:disabled { opacity: 0.35; cursor: default; border-color: var(--border); }
-.section-actions { display: flex; gap: 6px; }
-
-.sidebar-resizer { cursor: col-resize; background: var(--border); }
-.sidebar-resizer:hover { background: var(--accent); }
-
-.workspace-list { margin-bottom: 8px; }
-.version { color: var(--muted); font-weight: 400; font-size: 11px; }
-
-kbd {
-  display: inline-block;
-  min-width: 16px;
-  padding: 1px 5px;
-  text-align: center;
-  background: var(--panel-2);
-  border: 1px solid var(--border);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  font: inherit;
-  font-size: 11px;
-  color: var(--text);
-}
-
-/* ---------- detail pane, second pass ---------- */
-
-.dh-time { font-family: var(--mono); font-size: 14px; font-weight: 600; }
-.dh-svc { color: var(--muted); font-family: var(--mono); }
-.detail button.icon { border: 0; background: transparent; color: var(--muted); padding: 2px 7px; font-size: 16px; line-height: 1; }
-.detail button.icon:hover { color: var(--text); background: var(--panel-2); }
-
-.actions { display: flex; flex-wrap: wrap; gap: 8px; padding: 0 16px 6px; }
-.actions button { border-radius: 6px; padding: 6px 12px; font-size: 12px; }
-
-.msgbox, .detail pre {
+.detail pre,
+.msgbox {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   background: var(--bg);
   border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
   font-family: var(--mono);
+  font-size: 13px;
+  line-height: 20px;
 }
 
 /* Rows of name / value, the way the reference tools lay a record out. */
-.kv { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; background: var(--bg); }
-.kv-row { display: grid; grid-template-columns: 110px 1fr; align-items: center; border-top: 1px solid var(--border); }
+.kv { border: 1px solid var(--border); border-radius: var(--radius-md); overflow: hidden; background: var(--bg); }
+.kv-row { display: grid; grid-template-columns: 100px minmax(0, 1fr); align-items: stretch; border-top: 1px solid var(--border); }
 .kv-row:first-child { border-top: 0; }
-.kv-k { padding: 7px 12px; color: var(--muted); font-family: var(--mono); font-size: 12px; background: color-mix(in srgb, var(--panel-2) 60%, transparent); align-self: stretch; display: flex; align-items: center; }
-.kv-v { padding: 7px 12px; font-family: var(--mono); font-size: 12px; display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
-.kv-v .iso { display: block; width: 100%; color: var(--muted); font-size: 11px; }
-.kv-v .id-val { flex: 1; }
+.kv-k, .kv-v { font-family: var(--mono); font-size: 13px; line-height: 20px; padding: var(--space-2) var(--space-3); }
+.kv-k { color: var(--text-secondary); background: color-mix(in srgb, var(--panel-2) 60%, transparent); overflow-wrap: anywhere; }
+.kv-v { display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex-wrap: wrap; overflow-wrap: anywhere; }
+.kv-v .iso { display: block; width: 100%; color: var(--text-secondary); font-size: var(--fs-secondary); line-height: var(--lh-secondary); }
+/* Long ids wrap in place; the buttons beside them drop to the next line rather
+   than being covered. */
+.kv-v .id-val { flex: 1 1 12ch; min-width: 0; color: var(--accent); user-select: all; overflow-wrap: anywhere; }
 
-.snippet { border-radius: 6px; font-family: var(--mono); font-size: 12px; }
-.badge { border-radius: 4px; padding: 1px 8px; }
+/* ---------- origin ---------- */
 
-.origin { margin-bottom: 8px; }
-.origin .path { min-width: 0; word-break: break-all; }
+.origin { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-2); font-size: var(--fs-secondary); line-height: var(--lh-secondary); }
+.origin .path { min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 13px; line-height: 20px; }
 .origin .open-btn { margin-left: auto; flex: none; }
-.detail button.icon { color: var(--text); opacity: 0.7; width: 26px; height: 26px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
-.detail button.icon:hover { opacity: 1; }
-.detail section:last-child { padding-bottom: 16px; }
+.path { color: var(--accent); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+.path:hover { color: var(--text); text-decoration-thickness: 2px; }
+.path:focus-visible { outline-offset: 2px; }
+
+/* A fixed-height window onto the file: a long snippet scrolls here instead of
+   stretching the pane, and detail.js scrolls the matched line into view. */
+.snippet {
+  max-height: 280px;
+  overflow: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 20px;
+}
+.snippet div { padding: 0 var(--space-2); white-space: pre; width: max-content; min-width: 100%; }
+.snippet div.hit { background: var(--surface-selected); box-shadow: inset 3px 0 0 var(--accent); }
+.snippet .ln { color: var(--text-secondary); display: inline-block; width: 44px; user-select: none; }
+
+.candidates { margin-top: var(--space-3); border-top: 1px solid var(--border); padding-top: var(--space-2); }
+.candidates p { color: var(--text-secondary); font-size: var(--fs-secondary); line-height: var(--lh-secondary); margin: 0 0 var(--space-2); }
+.candidates p strong { color: var(--text); font-weight: 600; }
+.candidate { margin-bottom: var(--space-1); display: flex; gap: var(--space-2); align-items: baseline; }
+.candidate .path { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; font-family: var(--mono); font-size: 13px; line-height: 20px; }
+.candidate .cand-class { color: var(--text-secondary); font-size: var(--fs-secondary); }
+
+.origin-retry { margin-left: var(--space-2); }

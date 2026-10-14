@@ -3,7 +3,7 @@
 
 import { FRAMEWORK_CONTEXTS, el, escapeHtml, formatExactTime, post, state } from './core.js';
 import { correlationIds, renderFocus } from './filters.js';
-import { renderLogs, stepSelection } from './logs.js';
+import { renderLogs, setFollow, stepSelection } from './logs.js';
 
 /**
  * Builds the prompt handed to Claude for a selected log line.
@@ -63,8 +63,8 @@ function payloadSection(fields) {
     .join('\n');
   return `<section>
     <div class="section-head">
-      <h4>payload</h4>
-      <button class="mini copy-btn" data-copy="${escapeHtml(raw)}">copy payload</button>
+      <h4>Payload</h4>
+      <button class="mini copy-btn" data-copy="${escapeHtml(raw)}">Copy payload</button>
     </div>
     <pre>${blocks.join('\n')}</pre>
   </section>`;
@@ -84,6 +84,71 @@ function dedent(text) {
 
 // What the origin lookup returned for the open line, for the copy-for-AI button.
 let currentOrigin = null;
+// Where focus was before the inspector opened, so closing it can put it back.
+let returnFocus = null;
+
+const ICON = (path) =>
+  `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
+
+/**
+ * Whether the inspector is floating over the logs instead of sitting beside them.
+ * @returns true in overlay mode with a line open
+ */
+function isOverlay() {
+  return el.split.classList.contains('detail-open') && el.split.dataset.inspector === 'overlay';
+}
+
+/**
+ * Describes the pane to assistive technology as what it currently is: a dialog
+ * that holds the keyboard when it floats, an ordinary side panel when it does not.
+ * Layout calls this when the window crosses the point where the mode changes.
+ */
+export function syncInspector() {
+  const overlay = isOverlay();
+  el.detail.setAttribute('role', overlay ? 'dialog' : 'complementary');
+  if (overlay) el.detail.setAttribute('aria-modal', 'true');
+  else el.detail.removeAttribute('aria-modal');
+}
+
+/**
+ * Closes the inspector. A floating one hands focus back to where it came from;
+ * a docked one only does so if focus was inside it, so a keyboard user is never
+ * left on an element that no longer exists.
+ */
+export function closeDetail() {
+  if (!el.split.classList.contains('detail-open')) return;
+  const hadFocus = el.detail.contains(document.activeElement);
+  const overlay = isOverlay();
+  el.split.classList.remove('detail-open');
+  syncInspector();
+  if (overlay || hadFocus) (returnFocus?.isConnected ? returnFocus : el.logs).focus();
+  returnFocus = null;
+}
+
+/**
+ * Copies text and says so on the button without changing its width, so nothing
+ * beside it moves. A refusal is shown too — a silent failure looks like success.
+ * @param button - the button that was pressed
+ * @param text - what to copy
+ */
+async function copyWithFeedback(button, text) {
+  const original = button.innerHTML;
+  button.style.minWidth = `${button.offsetWidth}px`;
+  let failed = false;
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    failed = true;
+  }
+  button.textContent = failed ? 'Copy failed' : 'Copied';
+  button.classList.toggle('failed', failed);
+  const status = document.getElementById('copyStatus');
+  if (status) status.textContent = failed ? 'Copy failed: the browser blocked clipboard access.' : 'Copied to clipboard.';
+  setTimeout(() => {
+    button.innerHTML = original;
+    button.classList.remove('failed');
+  }, failed ? 2500 : 1200);
+}
 
 /**
  * Renders the detail pane for the selected log record.
@@ -92,56 +157,90 @@ let currentOrigin = null;
 export async function showDetail(record) {
   currentOrigin = null;
   state.selected = record.seq;
+  const wasOpen = el.split.classList.contains('detail-open');
+  if (!wasOpen) returnFocus = document.activeElement;
   el.split.classList.add('detail-open');
-  for (const row of el.window.querySelectorAll('.row.selected')) row.classList.remove('selected');
-  el.window.querySelector(`.row[data-seq="${record.seq}"]`)?.classList.add('selected');
+  syncInspector();
+  el.logs.setAttribute('aria-activedescendant', `row-${record.seq}`);
+  for (const row of el.window.querySelectorAll('.row.selected')) {
+    row.classList.remove('selected');
+    row.setAttribute('aria-selected', 'false');
+  }
+  const selectedRow = el.window.querySelector(`.row[data-seq="${record.seq}"]`);
+  selectedRow?.classList.add('selected');
+  selectedRow?.setAttribute('aria-selected', 'true');
 
   const ids = correlationIds(record);
   const kv = (name, value) => `<div class="kv-row"><span class="kv-k">${name}</span><span class="kv-v">${value}</span></div>`;
   el.detail.innerHTML = `<header>
       <span class="lvl ${record.level}">${record.level}</span>
       <span class="dh-time">${formatExactTime(record.at).split(' ').pop()}</span>
-      <span class="dh-svc">${escapeHtml(record.service)}</span>
+      <span class="dh-svc" title="${escapeHtml(record.service)}">${escapeHtml(record.service)}</span>
       <span class="grow"></span>
-      <button id="prevLine" class="icon" title="previous line"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l4-4 4 4"/></svg></button>
-      <button id="nextLine" class="icon" title="next line"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5.5l4 4 4-4"/></svg></button>
-      <button id="closeDetail" class="icon" title="close (Esc)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7"/></svg></button>
+      <button id="prevLine" class="icon-btn" title="previous line" aria-label="Previous line">${ICON('M3 8.5l4-4 4 4')}</button>
+      <button id="nextLine" class="icon-btn" title="next line" aria-label="Next line">${ICON('M3 5.5l4 4 4-4')}</button>
+      <button id="closeDetail" class="icon-btn" title="close (Esc)" aria-label="Close details">${ICON('M3.5 3.5l7 7M10.5 3.5l-7 7')}</button>
     </header>
-    <div class="actions">
+    <div class="detail-actions">
       <button id="copyPrompt" title="copy this line, its payload, its origin and the lines before it as a prompt">&#10022; Copy for AI</button>
       <button class="copy-btn" data-copy="${escapeHtml(record.msg)}">Copy message</button>
+      <span id="copyStatus" class="sr-only" role="status"></span>
     </div>
     <section>
-      <h4>message</h4>
+      <h4>Message</h4>
       <pre class="msgbox">${escapeHtml(record.msg)}</pre>
     </section>
     <section>
-      <h4>fields</h4>
+      <h4>Fields</h4>
       <div class="kv">
-        ${kv('time', `${formatExactTime(record.at)}<span class="iso">${new Date(record.at).toISOString()}</span>`)}
-        ${kv('service', escapeHtml(state.workspaces.length > 1 && record.repo ? `${record.repo}/${record.service}` : record.service))}
-        ${record.context ? kv('context', escapeHtml(record.context)) : ''}
+        ${kv('Time', `${formatExactTime(record.at)}<span class="iso">${new Date(record.at).toISOString()}</span>`)}
+        ${kv('Service', escapeHtml(state.workspaces.length > 1 && record.repo ? `${record.repo}/${record.service}` : record.service))}
+        ${record.context ? kv('Context', escapeHtml(record.context)) : ''}
         ${ids
           .map((id) =>
             kv(
               escapeHtml(id.key),
               `<span class="id-val" title="${escapeHtml(id.value)}">${escapeHtml(id.value)}</span>
               <button class="mini trace-btn" data-key="${escapeHtml(id.key)}" data-value="${escapeHtml(id.value)}"
-                title="show every line carrying this ${escapeHtml(id.key)}">trace</button>
-              <button class="mini copy-btn" data-copy="${escapeHtml(id.value)}">copy</button>`,
+                title="show every line carrying this ${escapeHtml(id.key)}" aria-label="Trace ${escapeHtml(id.key)} ${escapeHtml(id.value)}">Trace</button>
+              <button class="mini copy-btn" data-copy="${escapeHtml(id.value)}">Copy</button>`,
             ),
           )
           .join('')}
       </div>
     </section>
-    <section id="originSection"><h4>origin</h4><div class="origin">resolving…</div></section>
+    <section id="originSection"><h4>Origin</h4><div class="origin">Resolving…</div></section>
     ${payloadSection(record.fields)}`;
+
+  // A floating inspector takes the keyboard when it opens, not on every step.
+  if (!wasOpen && isOverlay()) document.getElementById('closeDetail')?.focus();
 
   // Everything that does not depend on the origin lookup is wired first. It used
   // to be wired after, which meant one failing request left trace and close dead.
   wireDetailActions(record);
+  loadOrigin(record);
+}
 
+/**
+ * Lets a failed origin lookup be tried again in place.
+ * @param section - the Origin section
+ * @param record - the log record that is open
+ */
+function wireRetry(section, record) {
+  section.querySelector('.origin-retry')?.addEventListener('click', () => {
+    section.innerHTML = '<h4>Origin</h4><div class="origin">Resolving…</div>';
+    loadOrigin(record);
+  });
+}
+
+/**
+ * Looks up where a line was logged from and fills the Origin section. Run again
+ * by Retry, so a failed lookup does not cost the selection or a page reload.
+ * @param record - the log record that is open
+ */
+async function loadOrigin(record) {
   const section = document.getElementById('originSection');
+  if (!section) return;
   let origin;
   try {
     origin = await post('/api/resolve', {
@@ -151,21 +250,21 @@ export async function showDetail(record) {
       service: record.service,
     });
   } catch (error) {
-    if (section) {
-      section.innerHTML = `<h4>origin</h4><div class="origin"><span class="badge none">unavailable</span>
-        <span>${escapeHtml(error.message)}</span></div>`;
-    }
+    section.innerHTML = `<h4>Origin</h4><div class="origin"><span class="badge none">unavailable</span>
+      <span>${escapeHtml(error.message)}</span> <button class="mini origin-retry">Retry</button></div>`;
+    wireRetry(section, record);
     return;
   }
-  if (!section) return;
+  // Stepping with the arrow keys outruns the lookup; an answer for a line that is
+  // no longer open must not become the origin Copy for AI reports.
+  if (!section || state.selected !== record.seq) return;
   currentOrigin = origin;
 
   if (!origin.match) {
     const kind = foreignKind(record);
-    section.innerHTML = `<h4>origin</h4>
+    section.innerHTML = `<h4>Origin</h4>
       <div class="origin"><span class="badge ${kind ? 'foreign' : 'none'}">${kind ? 'not your code' : 'not found'}</span>
-      <span>${kind ?? 'no indexed logger call matches this message'}</span></div>
-`;
+      <span>${kind ?? 'no indexed logger call matches this message'}</span></div>`;
   } else {
     const snippet = await post('/api/source', {
       repo: record.repo,
@@ -183,29 +282,30 @@ export async function showDetail(record) {
             return `<div${hit}><span class="ln">${lineNumber}</span>${escapeHtml(text)}</div>`;
           })
           .join('')
-      : `<div class="muted">could not read the file: ${escapeHtml(snippet.error ?? 'unknown error')}</div>`;
+      : `<div class="origin">Could not read the file: ${escapeHtml(snippet.error ?? 'unknown error')}
+          <button class="mini origin-retry">Retry</button></div>`;
 
     const others = (origin.candidates ?? []).filter(
       (candidate) => candidate.file !== origin.match.file || candidate.line !== origin.match.line,
     );
-    section.innerHTML = `<h4>origin</h4>
+    section.innerHTML = `<h4>Origin</h4>
       <div class="origin">
         <span class="badge ${origin.confidence}">${origin.confidence}</span>
         ${origin.match.kind === 'console' ? '<span class="badge temp">console.log — temporary debug</span>' : ''}
         ${origin.constant ? `<span class="badge">via ${escapeHtml(origin.constant)}</span>` : ''}
-        <span class="path" id="openFile">${escapeHtml(origin.match.file)}:${origin.match.line}</span>
-        <button id="openBtn" class="mini open-btn">open in editor</button>
+        <span class="path" id="openFile" role="button" tabindex="0">${escapeHtml(origin.match.file)}:${origin.match.line}</span>
+        <button id="openBtn" class="open-btn">Open in editor</button>
       </div>
       <div class="snippet">${code}</div>
       ${
         others.length > 0
           ? `<div class="candidates">
-              <p>This exact message is logged from ${others.length + 1} places. It cannot be told
-              apart from the line alone — the others are:</p>
+              <p><strong>${others.length + 1} possible source locations.</strong> The same message is logged
+              from each, so the line alone cannot tell them apart; the match above is a best guess. The others:</p>
               ${others
                 .map(
                   (candidate) =>
-                    `<div class="candidate"><span class="path candidate-open"
+                    `<div class="candidate"><span class="path candidate-open" role="button" tabindex="0"
                       data-file="${escapeHtml(candidate.file)}" data-line="${candidate.line}"
                       >${escapeHtml(candidate.file)}:${candidate.line}</span>${
                       candidate.class ? ` <span class="cand-class">${escapeHtml(candidate.class)}</span>` : ''
@@ -217,12 +317,35 @@ export async function showDetail(record) {
       }`;
   }
 
+  wireRetry(section, record);
+  // Scoped to this section, never the document: by now another line may be open,
+  // and its buttons must not be wired to this line's origin.
+  /**
+   * Makes a span act as a button for the keyboard as well as the pointer.
+   * @param node - the element
+   * @param action - what a click does
+   */
+  const activate = (node, action) => {
+    node.addEventListener('click', action);
+    node.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      event.preventDefault();
+      node.click();
+    });
+  };
   for (const link of section.querySelectorAll('.candidate-open')) {
-    link.addEventListener('click', () => post('/api/open', { repo: record.repo, file: link.dataset.file, line: Number(link.dataset.line) }));
+    activate(link, () => post('/api/open', { repo: record.repo, file: link.dataset.file, line: Number(link.dataset.line) }));
   }
-  const open = () => post('/api/open', { repo: record.repo, file: origin.match.file, line: origin.match.line });
-  document.getElementById('openBtn')?.addEventListener('click', open);
-  document.getElementById('openFile')?.addEventListener('click', open);
+  if (origin.match) {
+    const open = () => post('/api/open', { repo: record.repo, file: origin.match.file, line: origin.match.line });
+    section.querySelector('#openBtn')?.addEventListener('click', open);
+    const path = section.querySelector('#openFile');
+    if (path) activate(path, open);
+  }
+  // Show the matched line, not the top of the file excerpt.
+  const box = section.querySelector('.snippet');
+  const hit = section.querySelector('.snippet .hit');
+  if (box && hit) box.scrollTop = Math.max(0, hit.offsetTop - box.offsetTop - (box.clientHeight - hit.offsetHeight) / 2);
 }
 
 /**
@@ -232,42 +355,52 @@ export async function showDetail(record) {
 function wireDetailActions(record) {
   document.getElementById('prevLine')?.addEventListener('click', () => stepSelection(-1));
   document.getElementById('nextLine')?.addEventListener('click', () => stepSelection(1));
-  document.getElementById('copyPrompt')?.addEventListener('click', async (event) => {
-    const button = event.currentTarget;
-    await navigator.clipboard.writeText(buildPrompt(record, currentOrigin));
-    button.textContent = 'copied \u2713';
-    setTimeout(() => {
-      button.innerHTML = '&#10022; Copy for AI';
-    }, 1200);
+  document.getElementById('copyPrompt')?.addEventListener('click', (event) => {
+    copyWithFeedback(event.currentTarget, buildPrompt(record, currentOrigin));
   });
-  document.getElementById('closeDetail')?.addEventListener('click', () => {
-    el.split.classList.remove('detail-open');
-  });
+  document.getElementById('closeDetail')?.addEventListener('click', closeDetail);
   for (const button of el.detail.querySelectorAll('.trace-btn')) {
     button.addEventListener('click', () => {
       // Tracing means "show me everything about this", so any text filter is dropped.
       state.trace = { key: button.dataset.key, value: button.dataset.value };
       state.search = '';
       el.search.value = '';
-      state.follow = false;
-      document.getElementById('follow').classList.remove('on');
+      setFollow(false);
       renderFocus();
       renderLogs();
     });
   }
 }
 
-el.detail.addEventListener('click', async (event) => {
+el.detail.addEventListener('click', (event) => {
   const button = event.target.closest('.copy-btn');
-  if (!button) return;
-  try {
-    await navigator.clipboard.writeText(button.dataset.copy);
-    const original = button.textContent;
-    button.textContent = 'copied ✓';
-    setTimeout(() => {
-      button.textContent = original;
-    }, 1200);
-  } catch {
-    button.textContent = 'copy blocked';
+  if (button) copyWithFeedback(button, button.dataset.copy);
+});
+
+// A floating inspector holds the keyboard: Tab cycles inside it rather than
+// walking off into the page behind, and a click on that page dismisses it.
+el.detail.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab' || !isOverlay()) return;
+  const stops = [...el.detail.querySelectorAll('button:not(:disabled), [tabindex="0"], a[href]')];
+  if (stops.length === 0) return;
+  const first = stops[0];
+  const last = stops[stops.length - 1];
+  if (event.shiftKey && (document.activeElement === first || document.activeElement === el.detail)) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
   }
 });
+
+document.addEventListener(
+  'click',
+  (event) => {
+    if (!isOverlay() || el.detail.contains(event.target)) return;
+    event.stopPropagation();
+    event.preventDefault();
+    closeDetail();
+  },
+  true,
+);

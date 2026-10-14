@@ -13,8 +13,9 @@
     <link rel="stylesheet" href="/styles/panels.css" />
     <link rel="stylesheet" href="/styles/report.css" />
     <script>
-      // The theme has to be on <html> before the first paint; layout.js only gets
-      // there once the modules have loaded, which shows a frame of the default.
+      // The theme and density have to be on <html> before the first paint; layout.js
+      // only gets there once the modules have loaded, which shows a frame of the
+      // defaults — and a frame of the wrong row height.
       try {
         const stored = JSON.parse(localStorage.getItem('helmdev.theme') ?? 'null');
         document.documentElement.dataset.theme = stored ?? 'black';
@@ -22,10 +23,16 @@
         // No storage in a private window: black is still the right default.
         document.documentElement.dataset.theme = 'black';
       }
+      try {
+        const density = JSON.parse(localStorage.getItem('helmdev.density') ?? 'null');
+        document.documentElement.dataset.density = density === 'compact' ? 'compact' : 'readable';
+      } catch {
+        document.documentElement.dataset.density = 'readable';
+      }
     </script>
   </head>
   <body>
-    <aside class="sidebar">
+    <aside class="sidebar" id="sidebar" aria-label="Services">
       <div class="brand">
         <div class="brand-row">
           <span class="brand-mark">
@@ -39,9 +46,11 @@
             </svg>
             helm-dev<span class="version" id="version"></span>
           </span>
-          <button id="reportBtn" class="mini" title="report a bug">bug</button>
-          <button id="helpBtn" class="mini" title="keyboard shortcuts (?)">?</button>
-          <button id="settingsBtn" class="mini" title="settings">&#9881;</button>
+          <button id="reportBtn" class="mini" title="report a bug" aria-label="Report a bug">Bug</button>
+          <button id="helpBtn" class="icon-btn" title="keyboard shortcuts (?)" aria-label="Keyboard shortcuts" aria-keyshortcuts="?">?</button>
+          <button id="settingsBtn" class="icon-btn" title="settings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.48.48 0 0 0-.48-.41h-3.84a.48.48 0 0 0-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6a3.6 3.6 0 1 1 0-7.2 3.6 3.6 0 0 1 0 7.2z"/></svg>
+          </button>
         </div>
         <div id="repoName" class="repo"></div>
         <div id="branchName" class="branch-line"></div>
@@ -49,27 +58,34 @@
         <div id="statsBar" class="stats-bar"></div>
       </div>
 
-      <div class="section-title">Presets</div>
+      <div class="section-title"><span>Presets</span></div>
       <div class="presets" id="presets"></div>
 
-      <div class="section-title section-title-row">
+      <div class="section-title services-title">
         <span>Services <small id="statusSummary" class="status-summary"></small></span>
-        <span class="section-actions">
-          <button id="restartAll" class="mini" title="stop every running service, then start it again">restart all</button>
-          <button id="stopAll" class="mini" title="stop every running service">stop all</button>
+        <span class="bulk-actions">
+          <button id="restartAll" class="svc-btn" title="stop every running service, then start it again">Restart all</button>
+          <button id="stopAll" class="svc-btn" title="stop every running service">Stop all</button>
         </span>
       </div>
-      <input type="text" id="serviceFilter" class="service-filter" placeholder="filter services…" autocomplete="off" />
-      <div class="services" id="services"></div>
+      <label for="serviceFilter" class="sr-only">Filter services</label>
+      <input type="text" id="serviceFilter" class="service-filter" placeholder="Filter services…" autocomplete="off" />
+      <div class="services" id="services" role="group" aria-label="Services"></div>
     </aside>
 
-    <div class="sidebar-resizer" id="sidebarResizer" title="drag to resize"></div>
+    <div class="sidebar-resizer separator" id="sidebarResizer" role="separator" aria-orientation="vertical"
+      aria-label="Resize services panel" tabindex="0" title="drag to resize — or use the arrow keys"></div>
 
     <div class="main">
-      <div class="toolbar">
+      <div class="toolbar" role="toolbar" aria-label="Log filters">
+        <button id="sidebarToggle" class="sidebar-toggle" aria-controls="sidebar" aria-expanded="true">Services</button>
+        <div class="search-box">
+          <label for="search" class="sr-only">Search logs</label>
+          <input type="text" id="search" placeholder="Search logs…  ( / )" aria-keyshortcuts="/" autocomplete="off" />
+        </div>
         <div class="levels">
-          <button id="levelBtn" title="which levels to show">levels: all &#9662;</button>
-          <div id="levelMenu" class="menu" hidden>
+          <button id="levelBtn" title="which levels to show" aria-haspopup="true" aria-expanded="false" aria-controls="levelMenu">Levels: All &#9662;</button>
+          <div id="levelMenu" class="menu" role="group" aria-label="Levels to show" hidden>
             <label><input type="checkbox" data-level="error" checked /> error</label>
             <label><input type="checkbox" data-level="warn" checked /> warn</label>
             <label><input type="checkbox" data-level="info" checked /> info</label>
@@ -77,32 +93,50 @@
             <label><input type="checkbox" data-level="raw" checked /> raw</label>
           </div>
         </div>
-        <button id="noise" title="Nest bootstrap and Nx build output — 78% of a typical session">noise</button>
-        <input type="text" id="search" placeholder="filter text…  ( / )" />
-        <span id="focusChips" class="chips"></span>
+        <button id="noise" aria-pressed="true" title="Nest bootstrap and Nx build output — 78% of a typical session">Hide noise</button>
         <span class="grow"></span>
-        <span class="count" id="count"></span>
-        <button id="clear" title="hide everything logged so far — the lines stay buffered and can be shown again">clear</button>
+        <button id="clear" title="hide everything logged so far — the lines stay buffered and can be shown again">Clear view</button>
+      </div>
+      <div class="filters-row" id="filtersRow" hidden>
+        <span class="filters-label">Scope:</span>
+        <span id="focusChips" class="chips"></span>
+        <button id="clearFocus" title="drop the service scope and trace, and show every service again — search, levels and noise are left as they are">Clear scope</button>
       </div>
 
-      <div class="split" id="split">
+      <div id="focusMenu" class="menu" role="group" aria-label="Scoped services" hidden></div>
+
+      <div class="split" id="split" data-inspector="side">
         <div class="logs-wrap">
           <button id="restore" class="hidden-bar" hidden></button>
-          <div class="logs" id="logs">
+          <div class="log-head" aria-hidden="true">
+            <span>Time</span>
+            <span>Service</span>
+            <span class="h-lvl">Level</span>
+            <span>Message</span>
+            <span></span>
+          </div>
+          <div class="logs" id="logs" tabindex="0" role="listbox" aria-label="Log lines. Arrow keys move between lines.">
             <div class="logs-spacer" id="logsSpacer"><div class="logs-window" id="logsWindow"></div></div>
           </div>
-          <button id="follow" class="on jump" title="back to the newest line">jump to latest &#8595;</button>
+          <div class="log-status">
+            <span class="count" id="count"></span>
+            <span class="grow"></span>
+            <span class="stream-state" id="streamState" role="status" hidden>Disconnected — reconnecting…</span>
+            <span class="follow-state" id="followState" aria-live="polite">Following latest</span>
+            <button id="follow" class="on jump" title="back to the newest line">Jump to latest &#8595;</button>
+          </div>
         </div>
-        <div class="resizer" id="resizer" title="drag to resize"></div>
-        <div class="detail" id="detail"></div>
+        <div class="resizer separator" id="resizer" role="separator" aria-orientation="vertical"
+          aria-label="Resize details panel" tabindex="0" title="drag to resize — or use the arrow keys"></div>
+        <div class="detail" id="detail" aria-label="Log line details"></div>
       </div>
     </div>
 
-    <div id="settingsPanel" class="panel" hidden>
+    <div id="settingsPanel" role="dialog" aria-label="Settings" tabindex="-1" class="panel" hidden>
       <header>
         <strong>Settings</strong>
         <span class="grow"></span>
-        <button id="settingsClose" class="mini">&times;</button>
+        <button id="settingsClose" class="icon-btn" aria-label="Close settings">&times;</button>
       </header>
 
       <div class="panel-body">
@@ -122,12 +156,12 @@
         <h4>Logs</h4>
         <div class="setting">
           <span>Free the buffer</span>
-          <button id="purge" class="mini danger" title="permanently free all buffered logs — this cannot be undone">clear memory</button>
-          <small>Drops every buffered line, here and on the server. The <em>clear</em> button only hides them.</small>
+          <button id="purge" class="mini danger" title="permanently free all buffered logs — this cannot be undone">Clear memory</button>
+          <small>Drops every buffered line, here and on the server. The <em>Clear view</em> button only hides them.</small>
         </div>
         <div class="setting">
           <span>Log-site index</span>
-          <button id="reindex" class="mini">reindex</button>
+          <button id="reindex" class="mini">Reindex</button>
           <small>Rebuild the map from log messages to source lines. Rarely needed — it follows git HEAD.</small>
         </div>
 
@@ -139,10 +173,19 @@
             <option value="midnight">midnight</option>
             <option value="carbon">carbon</option>
             <option value="black">black</option>
+            <option value="charcoal">charcoal</option>
             <option value="amber">amber</option>
             <option value="light">light</option>
           </select>
           <small>Kept in this browser, not in settings.json.</small>
+        </label>
+        <label class="setting">
+          <span>Density</span>
+          <select id="density">
+            <option value="readable">Readable</option>
+            <option value="compact">Compact</option>
+          </select>
+          <small>Compact fits more log rows on screen. Kept in this browser.</small>
         </label>
 
         <h4>Starting services</h4>
@@ -166,14 +209,15 @@
       </div>
     </div>
 
-    <div id="helpPanel" class="panel" hidden>
-      <header><strong>Keyboard shortcuts</strong><span class="grow"></span><button id="helpClose" class="mini">&times;</button></header>
+    <div id="helpPanel" role="dialog" aria-label="Keyboard shortcuts" tabindex="-1" class="panel" hidden>
+      <header><strong>Keyboard shortcuts</strong><span class="grow"></span><button id="helpClose" class="icon-btn" aria-label="Close shortcuts">&times;</button></header>
       <table class="shortcuts">
         <tr><td><kbd>/</kbd></td><td>focus the filter box</td></tr>
         <tr><td><kbd>e</kbd></td><td>jump to next error</td></tr>
         <tr><td><kbd>E</kbd></td><td>jump to previous error</td></tr>
         <tr><td><kbd>n</kbd></td><td>toggle build/framework noise</td></tr>
-        <tr><td><kbd>Esc</kbd></td><td>drop the trace, then close the detail pane</td></tr>
+        <tr><td><kbd>&uarr;</kbd> <kbd>&darr;</kbd></td><td>move through the log lines, when the list has focus</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>close a menu or panel; then drop the trace; then close the detail pane</td></tr>
         <tr><td><kbd>?</kbd></td><td>this list</td></tr>
       </table>
       <div class="panel-body">
@@ -188,15 +232,16 @@
       </div>
     </div>
 
-    <div id="reportPanel" class="panel report-panel" hidden>
+    <div id="reportPanel" role="dialog" aria-label="Report a bug" tabindex="-1" class="panel report-panel" hidden>
       <header>
         <strong>Report a bug</strong>
         <span class="grow"></span>
-        <button id="reportClose" class="mini">&times;</button>
+        <button id="reportClose" class="icon-btn" aria-label="Close report form">&times;</button>
       </header>
 
       <div class="panel-body" id="reportForm">
         <p id="reportTarget" class="panel-note"></p>
+        <button id="reportRetry" class="mini" hidden>Retry</button>
 
         <label class="setting">
           <span>What went wrong?</span>

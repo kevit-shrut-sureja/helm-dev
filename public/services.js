@@ -123,8 +123,7 @@ function restartableServices() {
 function renderStopAll() {
   const count = liveServices().length;
   const button = document.getElementById('stopAll');
-  button.disabled = count === 0;
-  button.textContent = count === 0 ? 'stop all' : `stop all (${count})`;
+  setBulk(button, 'Stop all', count, 'Nothing is running to stop.');
 
   const tally = { running: 0, starting: 0, queued: 0, failed: 0 };
   for (const workspace of state.workspaces) {
@@ -140,11 +139,33 @@ function renderStopAll() {
   summary.textContent = tally.running + tally.starting + tally.queued + tally.failed === 0 ? '' : parts.join(' · ');
   summary.classList.toggle('bad', tally.failed > 0);
 
-  const restartable = restartableServices().length;
-  const restart = document.getElementById('restartAll');
-  restart.disabled = restartable === 0;
-  restart.textContent = restartable === 0 ? 'restart all' : `restart all (${restartable})`;
+  setBulk(document.getElementById('restartAll'), 'Restart all', restartableServices().length, 'Nothing is running to restart.');
 }
+
+/**
+ * Labels a bulk button with how many services it would touch, and when there are
+ * none says why in the tooltip and to assistive technology rather than in text.
+ * @param button - the button
+ * @param label - its name
+ * @param count - how many eligible services there are
+ * @param why - the explanation shown while it is disabled
+ */
+function setBulk(button, label, count, why) {
+  button.disabled = count === 0;
+  button.textContent = count === 0 ? label : `${label} (${count})`;
+  button.dataset.title ??= button.title;
+  button.title = count === 0 ? why : button.dataset.title;
+  button.setAttribute('aria-label', count === 0 ? `${label}. ${why}` : `${label}, ${count} service${count === 1 ? '' : 's'}`);
+}
+
+const ICONS = {
+  start: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M5 2.9v10.2a.5.5 0 0 0 .76.43l8-5.1a.5.5 0 0 0 0-.86l-8-5.1A.5.5 0 0 0 5 2.9z"/></svg>',
+  restart:
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13.2 8a5.2 5.2 0 1 1-1.7-3.85"/><path d="M13.4 2.2v3.2h-3.2"/></svg>',
+  stop: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg>',
+  live: '<svg viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M9.2 1.5 3.5 9h4l-.9 5.5L12.5 7h-4z"/></svg>',
+  pin: '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" aria-hidden="true"><path d="M8 1.8l1.85 3.75 4.15.6-3 2.92.7 4.13L8 11.25 4.3 13.2l.7-4.13-3-2.92 4.15-.6z"/></svg>',
+};
 
 /**
  * Renders one service row.
@@ -175,42 +196,76 @@ function serviceRowHtml(workspace, project, options = {}) {
   if (status === 'starting') notes.push('still booting — logs stream as it comes up');
   if (status === 'queued') notes.push('waiting to start — services boot a few at a time');
   if (failure) notes.push(`did not boot: ${failure}`);
-  if (status === 'completed') notes.push('finished its work and exited cleanly — press ▶ to run it again');
+  if (status === 'completed') notes.push('finished its work and exited cleanly — press Start to run it again');
   if (isFrontend) {
     notes.push(
       mode === 'live'
         ? 'live reload on: rebuilds and refreshes on change'
-        : 'started without live reload — use ▶L if you want it',
+        : 'started without live reload — the bolt button starts it with live reload',
     );
   }
   if (entry.ports?.length > 0) notes.push(`listening on ${entry.ports.map((port) => `:${port}`).join(' ')}`);
   if (unconfirmed) notes.push('not seen listening yet — assumed up after 60s');
   if (muted) notes.push('logs muted — click the muted badge to enable');
-  notes.push(live ? 'click to show only this service' : 'click ▶ to start');
+  notes.push(focused ? 'click to stop filtering the log to this service' : 'click to show only this service');
+  if (!live) notes.push('press Start to run it');
 
-  return `<div class="service ${stale ? 'stale' : ''} ${focused ? 'focused' : ''} ${state.pinned.has(id) ? 'pinned' : ''}"
-      data-repo="${escapeHtml(repo)}" data-name="${escapeHtml(project.name)}" title="${escapeHtml(notes.join('\n'))}">
-    <span class="dot ${status}"></span>
-    ${options.showRepo === true ? `<span class="svc-repo">${escapeHtml(repo)}</span>` : ''}
-    <span class="name">${escapeHtml(project.name)}</span>
-    ${stale ? `<span class="badge stale-badge">${changed}&#916;</span>` : ''}
-    ${status === 'queued' ? `<span class="badge queued-badge">queued ${workspace.queued.indexOf(project.name) + 1}</span>` : ''}
-    ${status === 'failed' ? '<span class="badge failed-badge">boot failed</span>' : ''}
-    ${status === 'completed' ? `<span class="badge done-badge">done${entry.ranForMs ? ` ${formatDuration(entry.ranForMs)}` : ''}</span>` : ''}
-    ${live && mode === 'live' ? '<span class="badge live-badge" title="started with live reload">live</span>' : ''}
-    ${unconfirmed ? '<span class="badge queued-badge">unconfirmed</span>' : ''}
-    ${muted ? '<span class="badge muted-badge" data-act="unmute" title="logs are off for this service — click to turn them on">muted</span>' : ''}
-    ${memory ? `<span class="mem">${memory}M</span>` : ''}
-    <span class="actions">
-      <button class="mini pin ${state.pinned.has(id) ? 'on' : ''}" data-act="pin"
-        title="${state.pinned.has(id) ? 'unpin — stop keeping it at the top' : 'pin — keep it at the top of this workspace'}"
-        >${state.pinned.has(id) ? '&#9733;' : '&#9734;'}</button>
-      ${live ? '<button class="mini" data-act="restart" title="stop and start again">&#10227;</button>' : ''}
-      ${live ? '<button class="mini" data-act="stop" title="stop service">&times;</button>' : '<button class="mini" data-act="start" title="start service">&#9654;</button>'}
-      ${!live && isFrontend
-        ? '<button class="mini watch-start" data-act="live" title="start with live reload — rebuilds on change, but uses far more memory">&#9654;L</button>'
-        : ''}
+  const pinned = state.pinned.has(id);
+  const staleLabel = `${changed} source change${changed === 1 ? '' : 's'} since start`;
+  const labels = [
+    stale ? `<span class="badge stale-badge" role="img" aria-label="${staleLabel}" title="${staleLabel}">${changed}&#916;</span>` : '',
+    status === 'queued' ? `<span class="badge queued-badge">queued ${workspace.queued.indexOf(project.name) + 1}</span>` : '',
+    status === 'failed' ? '<span class="badge failed-badge">boot failed</span>' : '',
+    status === 'completed' ? `<span class="badge done-badge">done${entry.ranForMs ? ` ${formatDuration(entry.ranForMs)}` : ''}</span>` : '',
+    live && mode === 'live' ? '<span class="badge live-badge" title="started with live reload">live</span>' : '',
+    unconfirmed ? '<span class="badge queued-badge">unconfirmed</span>' : '',
+  ].join('');
+  // In Running every workspace is mixed together, so the row says which worktree it
+  // is on a second line — the alias first and never truncated before the labels,
+  // since "which checkout" is the question that section exists to answer. The branch
+  // is not repeated: it is under the workspace's own heading.
+  const twoLine = options.showRepo === true;
+  const main = twoLine
+    ? `<span class="svc-line">
+        <span class="dot ${status}" aria-hidden="true"></span>
+        <span class="sr-only">${status}:</span>
+        <span class="name">${escapeHtml(project.name)}</span>
+      </span>
+      <span class="svc-line svc-sub">
+        <span class="svc-alias" title="${escapeHtml(workspace.root)}">${escapeHtml(repo)}</span>
+        ${memory ? `<span class="svc-mem">${memory}M</span>` : ''}
+        <span class="svc-labels">${labels}</span>
+      </span>`
+    : `<span class="dot ${status}" aria-hidden="true"></span>
+      <span class="sr-only">${status}:</span>
+      <span class="name">${escapeHtml(project.name)}</span>
+      <span class="svc-spacer"></span>
+      ${labels}`;
+  return `<div class="service ${twoLine ? 'two-line' : ''} ${focused ? 'focused' : ''} ${pinned ? 'pinned' : ''}"
+      data-repo="${escapeHtml(repo)}" data-name="${escapeHtml(project.name)}">
+    <button class="svc-main" data-focus-id="${escapeHtml(id)}|main" aria-pressed="${focused}"
+      title="${escapeHtml(notes.join('\n'))}">
+      ${main}
+    </button>
+    ${muted ? `<button class="badge muted-badge" data-focus-id="${escapeHtml(id)}|muted"
+      title="logs are off for this service — click to turn them on">muted</button>` : ''}
+    ${twoLine ? '' : `<span class="mem">${memory ? `${memory}M` : ''}</span>`}
+    <span class="svc-actions">
+      ${live
+        ? `<button class="svc-act" data-act="restart" data-focus-id="${escapeHtml(id)}|restart" title="Restart ${escapeHtml(project.name)}"
+            aria-label="Restart ${escapeHtml(project.name)}">${ICONS.restart}</button>
+          <button class="svc-act svc-act-stop" data-act="stop" data-focus-id="${escapeHtml(id)}|stop" title="Stop ${escapeHtml(project.name)}"
+            aria-label="Stop ${escapeHtml(project.name)}">${ICONS.stop}</button>`
+        : `${isFrontend
+            ? `<button class="svc-act svc-act-start" data-act="live" data-focus-id="${escapeHtml(id)}|live"
+                title="Start ${escapeHtml(project.name)} with live reload" aria-label="Start ${escapeHtml(project.name)} with live reload">${ICONS.live}</button>`
+            : ''}
+          <button class="svc-act svc-act-start" data-act="start" data-focus-id="${escapeHtml(id)}|start" title="Start ${escapeHtml(project.name)}"
+            aria-label="Start ${escapeHtml(project.name)}">${ICONS.start}</button>`}
     </span>
+    <button class="svc-pin ${pinned ? 'on' : ''}" data-act="pin" data-focus-id="${escapeHtml(id)}|pin" aria-pressed="${pinned}"
+      title="${pinned ? 'Unpin — stop keeping it at the top of its workspace' : 'Pin — keep it at the top of its workspace'}"
+      aria-label="${pinned ? 'Unpin' : 'Pin'} ${escapeHtml(project.name)}">${ICONS.pin}</button>
   </div>`;
 }
 
@@ -229,6 +284,8 @@ function visibleProjects(workspace) {
  */
 export function renderServices() {
   renderStopAll();
+  // innerHTML below replaces every control, and with it the keyboard's place.
+  const focusId = document.activeElement?.closest?.('#services') ? document.activeElement.dataset.focusId : null;
   const filtering = state.serviceFilter.trim().length > 0;
 
   // With one workspace the live-first ordering already puts these at the top, so
@@ -244,11 +301,13 @@ export function renderServices() {
     running.length === 0
       ? ''
       : `<div class="live-section ${runningCollapsed ? 'collapsed' : ''}">
-        <div class="repo-head" data-repo-head="${RUNNING_SECTION}"
-          title="every service that is up, in every workspace">
-          <span class="repo-caret">${runningCollapsed ? '&#9656;' : '&#9662;'}</span>
-          <span class="repo-name">running</span>
-          <span class="repo-live">${running.length}</span>
+        <div class="repo-head">
+          <button class="repo-toggle" data-repo-head="${RUNNING_SECTION}" data-focus-id="head|${RUNNING_SECTION}"
+            aria-expanded="${!runningCollapsed}" title="every service that is up, in every workspace">
+            <span class="repo-caret" aria-hidden="true">${runningCollapsed ? '&#9656;' : '&#9662;'}</span>
+            <span class="repo-name">Running</span>
+            <span class="repo-live">${running.length}</span>
+          </button>
         </div>
         ${runningCollapsed ? '' : running.map(({ workspace, project }) => serviceRowHtml(workspace, project, { showRepo: true })).join('')}
       </div>`;
@@ -265,14 +324,18 @@ export function renderServices() {
 
     return `<div class="repo-section ${collapsed ? 'collapsed' : ''}" draggable="true"
       data-repo="${escapeHtml(workspace.name)}">
-      <div class="repo-head" data-repo-head="${escapeHtml(workspace.name)}" title="${escapeHtml(workspace.root)}">
-        <span class="repo-caret">${collapsed ? '&#9656;' : '&#9662;'}</span>
-        <span class="repo-name">${escapeHtml(workspace.name)}</span>
+      <div class="repo-head">
+        <button class="repo-toggle" data-repo-head="${escapeHtml(workspace.name)}"
+          data-focus-id="head|${escapeHtml(workspace.name)}" aria-expanded="${!collapsed}" title="${escapeHtml(workspace.root)}">
+          <span class="repo-caret" aria-hidden="true">${collapsed ? '&#9656;' : '&#9662;'}</span>
+          <span class="repo-name">${escapeHtml(workspace.name)}</span>
+          ${liveHere > 0
+            ? `<span class="repo-live" title="${lifted.length > 0 ? 'listed under running, above' : 'up right now'}">${liveHere} up</span>`
+            : ''}
+        </button>
         ${liveHere > 0
-          ? `<span class="repo-live" title="${lifted.length > 0 ? 'listed under running, above' : 'up right now'}">${liveHere} up</span>`
-          : ''}
-        ${liveHere > 0
-          ? `<button class="mini repo-stop" data-stop-repo="${escapeHtml(workspace.name)}"
+          ? `<button class="icon-btn repo-stop" data-stop-repo="${escapeHtml(workspace.name)}"
+              data-focus-id="stop|${escapeHtml(workspace.name)}" aria-label="Stop the ${liveHere} running service(s) in ${escapeHtml(workspace.name)}"
               title="stop the ${liveHere} running service(s) in ${escapeHtml(workspace.name)}">&times;</button>`
           : ''}
       </div>
@@ -282,7 +345,9 @@ export function renderServices() {
   });
 
   el.services.innerHTML =
-    runningSection + sections.join('') || '<div class="no-match">nothing matches that filter</div>';
+    runningSection + sections.join('') || '<div class="no-match">Nothing matches that filter.</div>';
+  const byFocusId = (wanted) => [...el.services.querySelectorAll('[data-focus-id]')].find((node) => node.dataset.focusId === wanted);
+  if (focusId) byFocusId(focusId)?.focus();
 }
 
 /**
@@ -297,7 +362,7 @@ export function renderPresets() {
       </span>`,
     )
     .join('');
-  el.presets.innerHTML = `${saved}<button id="savePreset">+ save running</button>`;
+  el.presets.innerHTML = `${saved}<button id="savePreset">+ Save running</button>`;
 }
 
 el.services.addEventListener('click', async (event) => {
@@ -307,13 +372,12 @@ el.services.addEventListener('click', async (event) => {
     const live = liveServices().filter((service) => service.repo === repo);
     if (live.length === 0) return;
     if (!confirm(`Stop ${live.length} service(s) in ${repo}?\n\n${live.map((s2) => s2.name).join(', ')}`)) return;
-    stopRepo.textContent = '…';
     await post('/api/stop-all', { repo });
     renderServices();
     return;
   }
 
-  const head = event.target.closest('.repo-head');
+  const head = event.target.closest('.repo-toggle');
   if (head) {
     const repo = head.dataset.repoHead;
     if (state.collapsed.has(repo)) state.collapsed.delete(repo);
@@ -328,8 +392,38 @@ el.services.addEventListener('click', async (event) => {
   const repo = node.dataset.repo;
   const name = node.dataset.name;
   const id = key(repo, name);
-  const action = event.target.dataset?.act;
 
+  // A direct action is its own click: it must not also toggle the log filter.
+  const direct = event.target.closest('.svc-act, .svc-pin');
+  if (direct) {
+    await runServiceAction(repo, name, direct.dataset.act);
+    return;
+  }
+
+  if (event.target.closest('.muted-badge')) {
+    await post('/api/mute', { repo, name, muted: false });
+    renderServices();
+    return;
+  }
+
+  // A plain click on the row focuses that service's logs; it never stops anything.
+  if (state.focus.has(id)) state.focus.delete(id);
+  else state.focus.add(id);
+  renderServices();
+  renderFocus();
+  renderLogs();
+  writePref('focus', [...state.focus]);
+});
+
+/**
+ * Carries out a service action from its row, with the confirmations and the
+ * effect on the log filter each one needs.
+ * @param repo - the workspace name
+ * @param name - the service name
+ * @param action - start, live, restart, stop or pin
+ */
+async function runServiceAction(repo, name, action) {
+  const id = key(repo, name);
   if (action === 'restart') {
     if (!confirm(`Restart ${name} (${repo})? The running process will be stopped first.`)) return;
     renderServices();
@@ -339,6 +433,7 @@ el.services.addEventListener('click', async (event) => {
   if (action === 'stop') {
     await post('/api/stop', { repo, name });
     state.focus.delete(id);
+    writePref('focus', [...state.focus]);
     renderServices();
     renderFocus();
     renderLogs();
@@ -351,28 +446,15 @@ el.services.addEventListener('click', async (event) => {
     renderServices();
     return;
   }
-  if (action === 'unmute') {
-    await post('/api/mute', { repo, name, muted: false });
-    renderServices();
-    return;
-  }
   if (action === 'live' || action === 'start') {
     state.focus.add(id);
+    writePref('focus', [...state.focus]);
     await startService(repo, name, { live: action === 'live' });
     renderServices();
     renderFocus();
     renderLogs();
-    return;
   }
-
-  // A plain click on the row focuses that service's logs; it never stops anything.
-  if (state.focus.has(id)) state.focus.delete(id);
-  else state.focus.add(id);
-  renderServices();
-  renderFocus();
-  renderLogs();
-  writePref('focus', [...state.focus]);
-});
+}
 
 /**
  * Renders the repository and footprint readout in the header.
@@ -450,24 +532,23 @@ export function renderIndexMeta() {
 }
 
 document.getElementById('reindex').addEventListener('click', async (event) => {
-  event.target.textContent = 'indexing…';
+  event.target.textContent = 'Indexing…';
   // One entry per workspace, keyed by name — there is no single index to read.
   const meta = await post('/api/reindex');
   for (const workspace of state.workspaces) {
     if (meta[workspace.name]) workspace.index = meta[workspace.name];
   }
   renderIndexMeta();
-  event.target.textContent = 'reindex';
+  event.target.textContent = 'Reindex';
 });
 
 el.services.addEventListener('click', () => writePref('focus', [...state.focus]));
 
-document.getElementById('stopAll').addEventListener('click', async (event) => {
+document.getElementById('stopAll').addEventListener('click', async () => {
   const live = liveServices();
   if (live.length === 0) return;
   const listed = live.map((service) => `${service.repo}/${service.name}`).join(', ');
   if (!confirm(`Stop ${live.length} service(s)?\n\n${listed}`)) return;
-  event.target.textContent = 'stopping…';
   await post('/api/stop-all');
   renderServices();
 });
