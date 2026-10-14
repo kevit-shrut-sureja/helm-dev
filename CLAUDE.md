@@ -51,6 +51,7 @@ lib/report.mjs      files a bug report as a GitHub issue through `gh`
 lib/tailer.mjs      tails <service>.log drop files
 
 skills/helm-dev/   Claude Code skill teaching AI chats to use helmctl (installed by symlink)
+.claude/hooks/      docs-reminder.mjs: reminds a commit that changes behaviour to update the docs
 
 public/index.html   the page, and the only place the modules are listed
 public/app.js       boot: load state, paint, subscribe, hand over
@@ -80,6 +81,49 @@ defers them, so the DOM is ready when any of them runs.
 - `const`/`let` only, `===` only, early returns over nesting.
 - Errors are swallowed only where degrading is correct (a directory that cannot be
   watched, a `/proc` read on a non-Linux machine) and the empty `catch` says so.
+
+## Documentation
+
+Development here is done by AI, so the docs are the memory between sessions.
+Three files, each with one job:
+
+- **`FEATURES.md`**: what each feature does, when it applies, when it deliberately
+  does not, and why. Written from the user's side.
+- **`CLAUDE.md`** (this file): conventions, and the implementation decisions that
+  look wrong until you know the reason.
+- **`ARCHITECTURE.md`**: how the pieces fit: a service's lifecycle, the log
+  pipeline, where state lives.
+
+**Every change keeps them current, in the same commit:**
+
+- Adds a feature or changes how one behaves → update its entry in `FEATURES.md`
+  (What / When / When not / Why / Where). The "When not" cases matter most.
+- Makes a choice the next reader would want to undo → add an entry to "Things that
+  look wrong but are deliberate" below, with the number or the incident behind it.
+- Changes how the parts connect → update `ARCHITECTURE.md`.
+- None of these (a refactor, a test, a pure bug fix) → no doc change; say so in the
+  commit or PR.
+
+Docs describe the code on their own branch, never a plan. A feature on another
+branch gets its entry when it lands.
+
+Before changing a feature, read its `FEATURES.md` entry first: it lists the cases
+the code must keep handling. A project hook (`.claude/hooks/docs-reminder.mjs`)
+reminds a `git commit` that changes behaviour without touching `FEATURES.md` or
+`CLAUDE.md`. It never blocks the commit.
+
+## Working on it
+
+- **Branch off `master` for each feature**, and open one PR per feature. Never commit
+  to `master` directly; `./helm-dev` fast-forwards everyone's checkout from it.
+- **When another feature is already in progress** in the working tree, do not mix the
+  two. Start the new one in its own worktree:
+  `git worktree add -b <branch> ../helm-dev-<branch> origin/master`, and remove it
+  with `git worktree remove` once merged.
+- **A feature that depends on an unmerged one** branches from that branch, and its PR
+  targets it. GitHub retargets the PR to `master` when the first one merges.
+- **Before committing:** `node check.mjs` and `node smoke.mjs`. For anything touching
+  the server or a service's lifecycle, also `node e2e.mjs` and `node lifecycle.mjs`.
 
 ## Things that look wrong but are deliberate
 

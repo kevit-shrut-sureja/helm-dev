@@ -153,6 +153,8 @@ echo "export HELMDEV_EDITOR='webstorm --line {line} {file}'" >> ~/.zshrc
 ## Further reading
 
 - [`SETUP.md`](SETUP.md) — first-run walkthrough and troubleshooting
+- [`FEATURES.md`](FEATURES.md) — every feature: when it applies, when it does not,
+  and why
 - [`ARCHITECTURE.md`](ARCHITECTURE.md) — how a service gets run, how its logs
   reach the page, and where each piece of state lives
 - [`CLAUDE.md`](CLAUDE.md) — conventions, and the decisions that look wrong until you
