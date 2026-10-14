@@ -2,7 +2,7 @@
 .cache/
 
 # Machine settings: repo paths, concurrency, buffer size.
-settings.json
+/settings.json
 
 node_modules/
 
